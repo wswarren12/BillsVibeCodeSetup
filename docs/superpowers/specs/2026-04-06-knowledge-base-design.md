@@ -285,7 +285,7 @@ In `~/.claude/settings.json`:
 
 ### Hook 1: Session Start — Load Context
 
-**Trigger:** `session_start`
+**Trigger:** Claude Code `SessionStart` hook event
 **Behavior:**
 1. Detect current project directory
 2. Read `~/Obsidian/VibeCoding/wiki/index.md`
@@ -297,7 +297,7 @@ In `~/.claude/settings.json`:
 
 ### Hook 2: Prompt Submit — Workflow Enforcement
 
-**Trigger:** `prompt_submit`
+**Trigger:** Claude Code `UserPromptSubmit` hook event
 **Behavior:**
 1. Detect if the prompt requests a new feature or bug fix
 2. Check if BDD scenarios have been discussed in the current session
@@ -308,7 +308,7 @@ In `~/.claude/settings.json`:
 
 ### Hook 3: Pre-Commit — Architecture Check
 
-**Trigger:** `pre_commit` (git hook wired through Claude Code)
+**Trigger:** Claude Code `PreToolUse` hook event (filtered to `Bash` commands matching `git commit`)
 **Behavior:**
 1. Scan staged files for new dependencies, config changes, architectural patterns
 2. Check against wiki/architecture/ decision trees
