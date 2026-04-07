@@ -14,8 +14,8 @@
 ## Step 2: Diagnose
 
 - Trace the root cause starting from the failing test
-- Check [[wiki/index]] for known patterns that might be relevant
-- Review related [[wiki/decisions/TEMPLATE|ADRs]] for context on past architectural choices
+- Check [[index]] for known patterns that might be relevant
+- Review related [[decisions/TEMPLATE|ADRs]] for context on past architectural choices
 - Identify the minimal surface area of the bug
 
 ## Step 3: Fix
@@ -36,4 +36,4 @@
 
 - If the bug revealed a pattern (e.g., "always validate X before Y"), update the relevant wiki page
 - If a significant decision was made during the fix, create an ADR using [[decisions/TEMPLATE]]
-- Append to [[wiki/log]] with date, operation, and pages affected
+- Append to [[log]] with date, operation, and pages affected

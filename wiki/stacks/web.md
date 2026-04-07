@@ -70,7 +70,7 @@ Requires `output: "standalone"` in `next.config.js`.
 
 ## Related
 
-- [[auth]]
-- [[database]]
-- [[styling]]
-- [[state-management]]
+- [[architecture/auth]]
+- [[architecture/database]]
+- [[architecture/styling]]
+- [[architecture/state-management]]

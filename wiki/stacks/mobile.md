@@ -53,6 +53,6 @@ Used for CI pipelines only; actual builds run on EAS servers.
 
 ## Related
 
-- [[auth]]
-- [[state-management]]
-- [[styling]]
+- [[architecture/auth]]
+- [[architecture/state-management]]
+- [[architecture/styling]]

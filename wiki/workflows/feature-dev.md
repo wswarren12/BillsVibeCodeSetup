@@ -9,7 +9,7 @@
 - Explore the problem space with the user
 - Propose 2-3 implementation approaches with tradeoffs
 - Get explicit user approval before proceeding
-- Check [[wiki/index]] for relevant existing patterns and decisions
+- Check [[index]] for relevant existing patterns and decisions
 
 ## Step 2: Specify
 
@@ -30,7 +30,7 @@
 - Execute the plan step by step
 - Use subagents for independent tasks (e.g., component + API route in parallel)
 - Follow the wiki stacks and architecture pages — check [[stacks/web]], [[stacks/mobile]], [[architecture/auth]], etc.
-- Consult [[wiki/decisions/TEMPLATE]] format if a significant decision arises
+- Consult [[decisions/TEMPLATE]] format if a significant decision arises
 
 ## Step 5: Test
 
@@ -56,8 +56,8 @@
 
 - Update wiki pages if the feature introduced new patterns
 - Create an ADR (using [[decisions/TEMPLATE]]) if a significant architectural decision was made
-- Update [[wiki/index]] if new pages were created
-- Append to [[wiki/log]] with date, operation, and pages affected
+- Update [[index]] if new pages were created
+- Append to [[log]] with date, operation, and pages affected
 
 ---
 

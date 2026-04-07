@@ -55,7 +55,7 @@ Frontend runs locally via `next dev` during development; deployed to Vercel for 
 
 ## Related
 
-- [[web]]
-- [[auth]]
-- [[database]]
-- [[monorepo]]
+- [[stacks/web]]
+- [[architecture/auth]]
+- [[architecture/database]]
+- [[architecture/monorepo]]
