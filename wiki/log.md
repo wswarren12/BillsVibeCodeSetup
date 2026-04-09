@@ -43,3 +43,26 @@ Chronological record of all wiki operations. Append-only.
 **Pages updated with cross-links:**
 - `stacks/web.md`, `stacks/mobile.md`, `stacks/agents.md` — linked to patterns/file-structure, tier notes added
 - `index.md` — added Principles, Patterns, and ADR sections
+
+## [2026-04-09] project-stubs | Active project CLAUDE.md + wiki stubs
+
+**Context:** Adopting the Option D tiered framework across in-flight Claude Code projects. Step 1 (per-project CLAUDE.md) declares each project's tier + deviations for future Claude sessions; Step 2 (wiki stubs) indexes them in the knowledge base.
+
+**Projects addressed:** AgentForge, Rootstock, NewsBreef, Cairn.
+
+**Per-project CLAUDE.md created:**
+- `~/Desktop/Vibes/AgentForge/CLAUDE.md` — MVP tier (Supabase), Next.js 16 + React 19 + Tailwind 4; notes canvas/spatial UI paradigm, no shadcn, deep Claude Code filesystem coupling
+- `~/Desktop/Vibes/Rootstock/CLAUDE.md` — MVP tier (Supabase), Next.js 14 + React 18 + Tailwind 3; preserves garden/village metaphor vocabulary and calm-tech dependency on Framer Motion
+- `~/Desktop/Summon/prototypes/NewsBreef/CLAUDE.md` — ⚠️ DEVIATION tier; documents Cloudflare D1 + KV + custom JWT via `jose` and the n8n Cloud workflow that is the actual product; includes a deviation table with "when to reconsider" criteria
+- *Cairn skipped* — no code directory exists yet, only a PRD
+
+**New wiki project stubs:**
+- `wiki/projects/agentforge.md` — stack, architectural patterns (canvas + SSE + agent soul), tier reasoning
+- `wiki/projects/rootstock.md` — stack, metaphor-first domain language, calm-tech patterns
+- `wiki/projects/newsbreef.md` — explicitly-documented deviation from Supabase/Neon defaults with comparison table
+- `wiki/projects/cairn.md` — PRD-stage stub mapping planned stack to ADRs 001-004 (which were originally derived from Cairn's requirements)
+
+**Index updates:**
+- `index.md` — added Projects section listing all four
+
+**Why this matters:** Without per-project CLAUDE.md, Claude sessions inside each project directory won't know which tier applies or when deviations are intentional. The NewsBreef case is especially important — its Cloudflare D1 stack would otherwise look like a mistake to auto-correct toward Supabase.

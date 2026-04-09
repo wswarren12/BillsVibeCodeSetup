@@ -54,6 +54,15 @@ The constitution. Every other page defers to these.
 - [[decisions/adr-003-storacha-decentralized-storage]] — Storacha for decentralized storage (Cairn)
 - [[decisions/adr-004-react-native-expo]] — React Native + Expo over Flutter or native (Cairn)
 
+## Projects
+
+Active and planned projects, each with a per-project `CLAUDE.md` where a code directory exists.
+
+- [[projects/agentforge]] — Canvas-based AI agent command center (MVP tier, Next.js 16 + Supabase)
+- [[projects/rootstock]] — Calm-tech community Q&A with garden/village metaphor (MVP tier, Next.js 14 + Supabase)
+- [[projects/newsbreef]] — n8n-driven daily news briefing with Next.js companion (⚠️ Deviation: Cloudflare D1 + KV + JWT)
+- [[projects/cairn]] — Presence-verified geo-anchored memory app (PRD stage, MVP tier planned, React Native + Expo + Supabase + PostGIS)
+
 ## Summaries
 
 <!-- Populated via ingest workflow -->
