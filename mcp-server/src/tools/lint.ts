@@ -52,6 +52,23 @@ export async function collectPages(basePath: string, relPath: string = ''): Prom
   return pages;
 }
 
+/**
+ * Normalize a wikilink target: strip heading anchors and return the path portion only.
+ * `architecture/security#row-level-security` → `architecture/security`
+ */
+function normalizeLinkTarget(link: string): string {
+  const hashIndex = link.indexOf('#');
+  return hashIndex === -1 ? link : link.slice(0, hashIndex);
+}
+
+/**
+ * Wikilinks targeting raw/ resolve across the whole vault in Obsidian.
+ * The linter only scans wiki/ so treat raw/-prefixed links as external references.
+ */
+function isExternalVaultLink(link: string): boolean {
+  return link.startsWith('raw/') || link.startsWith('outputs/');
+}
+
 export async function executeLint(vaultPath: string, _scope?: string): Promise<LintReport> {
   const wikiBase = join(vaultPath, 'wiki');
   const allPages = await collectPages(wikiBase);
@@ -76,7 +93,9 @@ export async function executeLint(vaultPath: string, _scope?: string): Promise<L
   totalLinks += indexLinks.length;
 
   for (const link of indexLinks) {
-    const target = `${link}.md`;
+    if (isExternalVaultLink(link)) continue;
+    const normalized = normalizeLinkTarget(link);
+    const target = `${normalized}.md`;
     if (pageSet.has(target)) {
       inboundLinks.add(target);
     } else {
@@ -103,7 +122,9 @@ export async function executeLint(vaultPath: string, _scope?: string): Promise<L
     totalLinks += links.length;
 
     for (const link of links) {
-      const target = `${link}.md`;
+      if (isExternalVaultLink(link)) continue;
+      const normalized = normalizeLinkTarget(link);
+      const target = `${normalized}.md`;
       if (pageSet.has(target)) {
         inboundLinks.add(target);
       } else {

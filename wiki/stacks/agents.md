@@ -22,19 +22,32 @@ pip install claude-agent-sdk fastapi uvicorn pydantic
 pip freeze > requirements.txt
 ```
 
-## Conventions
+## File Structure
+
+See [[patterns/file-structure#agentautomation-projects]] for the canonical layout.
+
+Quick recap:
 
 ```
-src/
-  agents/    # Agent definitions and configurations
-  models/    # Pydantic models
-  api/       # FastAPI routes
-tests/       # Test suite
+agents/                 # Agent definitions
+  [agent-name]/
+    index.ts            # Agent entry point
+    tools.ts            # Tool/function definitions
+    prompts.ts          # System prompts and templates
+    types.ts            # Input/output types
+lib/
+  mcp.ts                # MCP client setup
+  llm.ts                # LLM client initialization
+  state.ts              # State between agent turns
+scripts/                # One-off or scheduled scripts
+config/
+  agents.yaml
 ```
 
-- One agent per file in `src/agents/`.
-- All data contracts defined as Pydantic models.
+- One agent per folder. Keep agents small and single-purpose.
+- All data contracts defined as typed models (Pydantic for Python, zod for TS).
 - FastAPI routes are thin wrappers; business logic lives in agents and models.
+- See [[patterns/agent-automation]] for the plan-execute-validate loop and tool schema design.
 
 ## Docker Pattern
 
@@ -49,5 +62,7 @@ CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 ## Related
 
+- [[patterns/agent-automation]] — Plan-execute-validate loop, tool schemas, MCP integration
+- [[patterns/file-structure]] — Agent project layout
 - [[architecture/docker]]
 - [[architecture/api-design]]

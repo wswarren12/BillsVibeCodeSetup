@@ -24,19 +24,32 @@ npm install drizzle-orm @neondatabase/serverless
 npm install -D drizzle-kit
 ```
 
-## Conventions
+## File Structure
+
+See [[patterns/file-structure#nextjs-web]] for the canonical Next.js layout.
+
+Quick recap:
 
 ```
-src/
-  app/           # Routes (App Router file-based routing)
-  components/    # Shared UI components
-  lib/           # Utilities and helpers
-  server/        # Server-only code (DB queries, services)
+app/                # App Router routes
+  (auth)/           # Route groups for layout boundaries, not URL segments
+  (dashboard)/
+  api/webhooks/     # Route Handlers — webhooks and third-party integrations only
+components/         # ui/ for primitives, [FeatureName]/ for feature-specific
+lib/
+  supabase/
+    client.ts       # Browser client
+    server.ts       # Server-side client (NEVER import from client components)
+    middleware.ts   # Auth middleware helper
+hooks/
+public/
 ```
 
-- Server Components by default; add `"use client"` only when needed.
-- Co-locate route-specific components inside `app/` route folders.
-- Keep server-only imports in `src/server/` to avoid accidental client bundling.
+- Server Components by default; add `"use client"` only when the component needs state, effects, or event handlers.
+- Separate browser vs. server Supabase clients. This is not optional — mixing them causes auth bugs.
+- Route groups `(groupName)` are for layout boundaries, not URL structure.
+- No `src/` directory — the project root IS the source. See [[patterns/file-structure#universal-rules]].
+- No barrel files (`index.ts` re-exports). Import directly from the file.
 
 ## Docker Pattern
 
@@ -68,8 +81,14 @@ CMD ["node", "server.js"]
 
 Requires `output: "standalone"` in `next.config.js`.
 
+## Tier Note
+
+This stack is the **production tier** of [[architecture/database]] and [[architecture/api-design]]. For the MVP tier (Supabase client direct, no Server Actions layer), see the Supabase sections in those pages.
+
 ## Related
 
+- [[patterns/file-structure]] — Canonical Next.js layout
+- [[patterns/data-flow]] — End-to-end data flow
 - [[architecture/auth]]
 - [[architecture/database]]
 - [[architecture/styling]]
