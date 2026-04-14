@@ -45,6 +45,7 @@ The constitution. Every other page defers to these.
 - [[workflows/feature-dev]] — 8-step feature development pipeline with BDD scenarios
 - [[workflows/bug-fix]] — 5-step bug fix workflow: reproduce, diagnose, fix, test, record
 - [[workflows/ingest]] — Source ingestion pipeline for adding external knowledge
+- [[workflows/tips-ingest]] — Lightweight capture flow for video tips, TikToks, and short-form resources
 
 ## Decisions (ADRs)
 
