@@ -70,6 +70,28 @@ export async function POST(req: NextRequest) {
 - Store Stripe customer ID in your user table — don't look it up by email
 - Idempotency: webhook handlers must be safe to run multiple times for the same event
 - Never put Stripe secret keys in client code — server-side only
+- **Sanitize redirect URLs before passing to Stripe.** `success_url`, `cancel_url`, and `return_url` must be normalized via `new URL(envVar).origin` — never raw-concatenate an env var into the URL. Stripe rejects URLs with whitespace, trailing newlines, or unusual characters with `code: url_invalid`.
+- **Surface Stripe error details in logs.** When catching a `StripeError`, log `error.code`, `error.param`, `error.type`, and `error.message` — not just `error`. Generic 500 responses are fine for the client, but the server log must contain enough to diagnose without re-running.
+- **Stripe objects are mode-scoped.** Customer IDs, price IDs, and subscription IDs created with test keys do not exist under live keys (and vice-versa). When switching modes, treat the stored IDs as invalidated. Always confirm a stored `stripe_customer_id` resolves under the active key before reusing it.
+
+## Gotchas (production-learned)
+
+### `NEXT_PUBLIC_*` vars are inlined at build time
+On Vercel (and any Next.js bundler), `NEXT_PUBLIC_*` env vars are substituted into the JS bundle at build time, not read at runtime. Changing the value in the dashboard without redeploying does nothing — the old value is still baked into the served bundle. Any fix to a `NEXT_PUBLIC_*` var requires a fresh deployment.
+
+### `vercel env add` will silently store trailing newlines
+If you pipe a value into `vercel env add` via `echo "value" | vercel env add NAME prod`, `echo` appends a `\n` and Vercel stores it. The newline survives into `process.env.NEXT_PUBLIC_APP_URL`, gets concatenated into `success_url`, and Stripe rejects the URL with `url_invalid`. The endpoint returns 500 in prod while the local dev server (with a clean `.env.local`) works perfectly.
+
+**Defenses:**
+- Use `printf "%s" "value" | vercel env add NAME prod` (no trailing newline) — or pipe from a file written without a final newline.
+- After adding any env var, immediately `vercel env pull` and inspect the file. Note that `vercel env pull` escapes embedded newlines as the two characters `\n` inside double quotes — to detect this, look for `"...\\n"` at the end of a value line.
+- Defend in code: wrap env-var URL reads in a `getAppUrl()` helper that does `new URL(candidate.trim()).origin`. This both trims and validates, and centralizes the fallback. See NewsBreef's `web/lib/app-url.ts` (May 2026 incident).
+
+### Differential diagnostic signal: local works, prod fails
+When the same code path passes locally and 500s in production, suspect **env-value corruption first** — before suspecting library version skew, framework behavior, or platform differences. The local `.env.local` is hand-edited and clean; the production env was probably set via a shell command and may contain whitespace or newlines you didn't intend. A two-minute `vercel env pull && cat -A .env.prod` catches most of these.
+
+### Don't trust your own repro until it matches prod
+While debugging the NewsBreef incident, an SDK replay using the same env var passed locally — because the harness's `clean()` helper trimmed the value before sending it. The production code path did not trim. When your reproduction script disagrees with prod, suspect the **reproduction**, not the platform. Strip any "helpful" sanitization out of the repro until it fails the same way prod does.
 
 ## Sources
-[To be populated via ingest]
+- NewsBreef production incident, 2026-05-31 — trailing newline in `NEXT_PUBLIC_APP_URL` corrupted Stripe `success_url`; fix committed in `6616ae6` on `wswarren12/NewsBreef`.

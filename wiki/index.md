@@ -28,10 +28,13 @@ The constitution. Every other page defers to these.
 - [[architecture/security]] — Minimum security baseline: env vars, RLS, CORS, validation
 - [[architecture/testing]] — Inverted pyramid, BDD + Playwright, what NOT to test
 - [[architecture/styling]] — CSS/styling approach decision tree
-- [[architecture/payments]] — Payment processing integration
+- [[architecture/payments]] — Stripe integration: webhook handler, redirect URL hygiene, mode-scoping, production-learned gotchas
 - [[architecture/hosting]] — Hosting and deployment decision tree
 - [[architecture/docker]] — Container configuration and orchestration
 - [[architecture/monorepo]] — Monorepo structure and tooling
+- [[architecture/embedding-models]] — When to consider a small embedding model vs. an API or large model (descriptive, per-project)
+- [[architecture/Onion Architecture — MOC]] — Map of Content for onion architecture: the one rule, paths through the material, related notes
+- [[architecture/Onion Architecture — Project Template Block]] — Ready-to-commit starter: filled-in `CLAUDE.md`, `dependency-cruiser` config, verify scripts
 
 ## Patterns
 
@@ -42,6 +45,7 @@ The constitution. Every other page defers to these.
 
 ## Workflows
 
+- [[workflows/new-project]] — 8-step project initialization with hard gate: Domain Discovery + Core Identification before any scaffolding
 - [[workflows/feature-dev]] — 8-step feature development pipeline with BDD scenarios
 - [[workflows/bug-fix]] — 5-step bug fix workflow: reproduce, diagnose, fix, test, record
 - [[workflows/ingest]] — Source ingestion pipeline for adding external knowledge
@@ -54,6 +58,7 @@ The constitution. Every other page defers to these.
 - [[decisions/adr-002-privy-web3-auth]] — Privy for invisible Web3 auth (Cairn)
 - [[decisions/adr-003-storacha-decentralized-storage]] — Storacha for decentralized storage (Cairn)
 - [[decisions/adr-004-react-native-expo]] — React Native + Expo over Flutter or native (Cairn)
+- [[decisions/adr-005-onion-hexagonal-default]] — Onion + Hexagonal as default architecture for every new project, enforced via the new-project workflow
 
 ## Projects
 
@@ -66,7 +71,7 @@ Active and planned projects, each with a per-project `CLAUDE.md` where a code di
 
 ## Summaries
 
-<!-- Populated via ingest workflow -->
+- [[summaries/small-embedding-models-field-guide]] — Distilled takeaways from the May 2026 small-embedding-models field guide
 
 ## Entities
 
