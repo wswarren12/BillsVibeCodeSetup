@@ -4,6 +4,43 @@ Chronological record of all wiki operations. Append-only.
 
 ---
 
+## [2026-07-20] add | Security Findings catalog + Security Review Capture flow
+
+**Trigger:** User asked that whenever a security review or security-reviewer agent runs, the lessons, vulnerabilities, and fixes be captured in a dedicated part of the knowledge base so future analogous projects avoid the same vulnerabilities.
+
+**New pages:**
+- `wiki/architecture/security-findings.md` — empirical companion to the security baseline: catalog of vulnerabilities actually found in reviews, organized into eight categories (auth/session, authorization/RLS, injection, secrets/config, client-side exposure, API/webhook, supply chain, Web3). Per-finding format: class, found-in, severity, vulnerability, fix, prevention rule, detection hint. Rules: confirmed findings only (dismissed false positives go in the review's log entry), Lesson Capture dedup gate applies, no live secrets or working exploit payloads in the vault, every review logged even at zero findings.
+
+**Pages updated:**
+- `CLAUDE.md` (vault root) — added **Security Review Capture** to Workflows: read the findings page *before* every review (check known classes first), record confirmed findings *after*, log every review.
+- `wiki/workflows/lesson-capture.md` — Step 2 now routes security-relevant lessons to the findings page instead of scattering them across topic pages.
+- `wiki/index.md` — added `architecture/security-findings` entry.
+
+**Enforcement (outside the vault):**
+- `hooks/security-review-capture.sh` (new) — wired to Claude Code's `PostToolUse` event (matcher `Agent|Task|Skill`) in `~/.claude/settings.json`; when a spawned agent's or invoked skill's input matches security signals (security / vulnerab / pentest / threat model), injects the capture protocol into context. Verified firing live against a probe agent.
+- `hooks/workflow-enforcement.sh` — new security branch (checked before feature/bugfix signals): prompts mentioning security review/audit/scan get the before-and-after capture reminder.
+- `~/.claude/CLAUDE.md` — Lesson Capture section extended with the security-review special case.
+
+**Why this matters:** Review findings previously evaporated when the session ended — the next project could ship the same IDOR or RLS gap and pay for the same discovery twice. The findings page makes each vulnerability class a one-time cost: recorded once with a detection hint, then mechanically checked at the start of every future review via the pre-review read mandate.
+
+## [2026-07-20] add | Lesson Capture workflow — automated error/workaround/surprise recording
+
+**Trigger:** User asked that whenever Claude discovers an error in its work, needs a workaround, hits a surprising lesson, or the user reports something broken, the knowledge base be updated automatically with the lesson and how to navigate around it.
+
+**New pages:**
+- `wiki/workflows/lesson-capture.md` — 6-step workflow (resolve → locate → dedup → record → index → log). Defines four triggers (self-discovered error, required workaround, surprising behavior, user-reported breakage), a non-trigger clause for trivial slips, a dedup hard gate (search the symptom/error before writing; skip exact duplicates, refine incomplete entries in place, one canonical entry per lesson), a four-part lesson format (symptom / root cause / resolution / prevention rule), and the prefer-update-over-create rule modeled on the payments-page Gotchas precedent.
+
+**Pages updated:**
+- `CLAUDE.md` (vault root) — added Lesson Capture to the Workflows section as a mandatory workflow.
+- `wiki/index.md` — added `workflows/lesson-capture` entry.
+
+**Enforcement (outside the vault):**
+- `hooks/lesson-capture.sh` (new) — wired to Claude Code's `PostToolUseFailure` event (Bash matcher) in `~/.claude/settings.json`; injects a lesson-capture reminder into context whenever a command Claude runs fails.
+- `hooks/workflow-enforcement.sh` — bugfix branch extended so user-reported-error prompts also mandate lesson capture after the fix.
+- `~/.claude/CLAUDE.md` — added a global Lesson Capture protocol section pointing at the workflow.
+
+**Why this matters:** Lessons were previously captured ad hoc (the 2026-06-02 payments entry required deliberate effort). This makes capture mechanical: hooks fire on the observable proxies of "something went wrong" (failed tool calls, error-language prompts), and the workflow defines exactly where the lesson lands so it is findable next time the topic comes up.
+
 ## [2026-06-02] update | Payments page — production-learned rules + gotchas
 
 **Source:** NewsBreef production incident, 2026-05-31. A 500 error on `/api/stripe/create-checkout` on `newsbreef.billsai.club` traced to a trailing newline embedded in the `NEXT_PUBLIC_APP_URL` Vercel env var, which corrupted Stripe's `success_url` and triggered `StripeInvalidRequestError | code: url_invalid`.
@@ -146,3 +183,32 @@ Until those are added, the MOC's table and "Paths through the material" callouts
 - `index.md` — added Projects section listing all four
 
 **Why this matters:** Without per-project CLAUDE.md, Claude sessions inside each project directory won't know which tier applies or when deviations are intentional. The NewsBreef case is especially important — its Cloudflare D1 stack would otherwise look like a mistake to auto-correct toward Supabase.
+
+## [2026-06-24] decision | Syncing large Claude Design (.dc.html) files past the MCP 256 KiB cap
+- ADR: wiki/decisions/2026-06-24-syncing-large-claude-design-dc-html-files-past-the-mcp-256-kib-cap.md
+
+## [2026-07-19] decision | PLAA Activity Submission Bot — MVP build resolutions (§11 open questions)
+- ADR: wiki/decisions/2026-07-19-plaa-activity-submission-bot-mvp-build-resolutions-11-open-questions.md
+
+## [2026-07-20] ingest | PLAA Activity Submission Bot build learnings
+- New pattern: wiki/patterns/n8n-llm-workflows.md (execution billing → in-workflow chains; $env vs $vars Cloud split; webhook node over Chat Trigger; activation/error-workflow/re-import gotchas; disabled-by-default optional-credential nodes; generate workflow JSON from source modules)
+- New pattern: wiki/patterns/llm-bot-structural-defense.md (structural whitelist row builder, config-sourced metadata, code-gated confirmation, delimiter-wrapped review input; 481 deterministic tests / zero live API calls; not-testable-locally grading → post-deploy smoke checklist)
+- New project page: wiki/projects/plaa-activity-bot.md (repo: github.com/wswarren12/ActivityBotv2, private)
+- Index updated (Patterns, Projects)
+
+## [2026-07-20] bug-fix | PLAA bot: URL location checks were host-only
+- The whole LabOS app shares directory.plnetwork.io; forum lives at /forum, events directory at /events/irl. Host-only "expected domain" checks (and the prompt's "LabOS Forum domain" wording) rejected valid forum links. Fixed with host + whole-segment path-prefix checks (EXPECTED_URL_LOCATIONS) in constraint-checks.mjs + config validation notes; reproducing test uses the reported URL verbatim.
+
+## [2026-07-20] update | n8n local-testing CORS section added to patterns/n8n-llm-workflows
+- Dedicated section from the PLAA local-testing debug: exact-origin-only allow-lists (wildcard ports match nothing), localhost vs 127.0.0.1 as distinct origins, why curl can't reproduce preflight failures (no Origin header; blocked POST never creates an execution), terminal preflight-testing recipe, preflight caching after a fix, and the headless CLI import path (id field required; pre-wire settings.errorWorkflow).
+
+## [2026-07-20] bug-fix | PLAA bot: n8n Code-node sandbox lacks the URL global; 2-digit years rejected
+- URL validation threw inside n8n (no URL global in the 2.x task-runner sandbox) while passing in plain Node — every URL read as malformed at the confirm gate. Validators rewritten regex-only + sandbox-safety source test. isParseableDate now maps 2-digit years to 20xx. Intake model bumped to claude-sonnet-4-6 (product decision; review chain unchanged). Pattern page gained "The Code-node sandbox is not Node" section.
+
+## [2026-07-20] update | PLAA bot: near-answer normalization + pre-summary validation gate
+- Dates canonicalized to ISO from any common format (code + prompt); URL checks loosened to keyword plausibility (forum/event) since the WG reviews rows anyway; draft now validated when the summary is generated so members never confirm a summary that would bounce. Pattern added to llm-bot-structural-defense (validate at draft time; normalize near-answers; plausibility over exact-match when a human reviewer is downstream).
+
+## [2026-07-20] lesson | PLAA bot security review — record-layer injection, PII retention, public-token cost bound
+- Three gotchas added to patterns/llm-bot-structural-defense.md: (1) spreadsheet formula/CSV injection is a surface DOWNSTREAM of the model's structural defenses — neutralize every string cell (leading apostrophe on =+-@) + write RAW; primary vector was the email cell, not the wrapped answer; (2) n8n saveDataSuccessExecution:'all' persists PII outside the sanctioned store — set 'none' for PII workflows; (3) a public shared-secret needs an in-workflow global rate limit before the model node to bound LLM cost. Fixes shipped in commit ab2859b (780 tests green).
+
+## [2026-07-21] ingest | PLAA bot security review fixes #1-#4 (commit ab2859b). Recorded 3 security gotchas in patterns/llm-bot-structural-defense.md: spreadsheet formula/CSV injection downstream of model defenses (neutralize every string cell + RAW mode; email cell was the real vector); n8n saveDataSuccessExecution:'all' persists PII outside the sanctioned store (set 'none'); public shared-secret needs in-workflow global rate limit before the model node to bound LLM cost. All four findings fixed and enforced by validate-workflow.mjs; 780 tests green.

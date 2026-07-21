@@ -54,7 +54,44 @@ Neon Postgres + Drizzle (always)
 - **Mobile** → EAS
 - **Agents** → Docker
 
+## Default Architecture (every project)
+
+**Onion Architecture with Hexagonal adapters.** The single rule: **ALL DEPENDENCIES POINT INWARD.**
+
+- `domain/` — pure business logic. No frameworks, no SDKs, no Supabase, no React/Next/Expo, no fetch, no `process.env`. Zod is the only permitted external dep (for expressing domain rules).
+- `application/` — orchestrates use cases. Imports `domain/` only.
+- `infrastructure/` — all real-world code: DB adapters, HTTP, UI, vendor SDKs, env reading, composition root. This is the **hexagonal** layer: one adapter per port.
+
+Canonical sources:
+- `wiki/architecture/Onion Architecture — MOC.md`
+- `wiki/architecture/Onion Architecture — Project Template Block.md` (filled-in `CLAUDE.md` block, `dependency-cruiser` config, verify scripts)
+- ADR: `wiki/decisions/adr-005-onion-hexagonal-default.md`
+
+## New Project Initialization (hard gate)
+
+When the user says they're **starting**, **spinning up**, **scaffolding**, or **creating a new project** — or runs `git init` / `pnpm create` / `npx create-*` in an empty directory — Claude MUST follow `wiki/workflows/new-project.md`.
+
+Specifically:
+1. **STOP.** Do not pick a stack, run a scaffolder, write a README, or generate any code yet.
+2. Run **Step 2: Domain Discovery** — ask the clarifying questions in the workflow's question battery before anything else. The user's words define the ubiquitous language.
+3. Run **Step 3: Core Identification** — state the core in 1–3 sentences and get explicit user approval. The core is what survives the substitution test (swap DB / framework / UI / vendor and what's left).
+4. Then map **ports & adapters** (Step 4), select stack (Step 5), scaffold from the Onion Project Template Block (Step 6), prove the dependency-cruiser gate bites (Step 7), and record (Step 8).
+
+**Escape hatch:** if the project is a throwaway spike / CRUD demo / one-off script, Claude MUST ask explicitly: *"Is this a throwaway spike where we should skip the onion gate?"* Only an explicit "yes" from the user skips the workflow, and the opt-out must be logged in the project's `CLAUDE.md` as: **"Onion gate: skipped — throwaway spike."** Silence is not consent.
+
+Applies to all four stacks: **Web**, **Mobile**, **Agents**, **Web3**.
+
 ## Workflows
+
+### New Project (8 steps) — see `wiki/workflows/new-project.md`
+1. **Trigger** — recognize new-project signals; stop and announce the workflow
+2. **Domain Discovery** — clarifying questions; capture the ubiquitous language (HARD GATE)
+3. **Core Identification** — state the core; substitution test; user approval (HARD GATE)
+4. **Ports & Adapters** — one port per external capability; hexagonal adapter per port
+5. **Stack Selection** — apply decision trees; ADR for any deviation
+6. **Scaffold** — apply the Onion Project Template Block
+7. **Verify Gate** — prove `pnpm verify` (dependency-cruiser) bites
+8. **Record** — per-project wiki page, ADR if deviation, index, log
 
 ### Feature Development (8 steps)
 1. **Brainstorm** — explore the problem space, gather context from the knowledge base
@@ -72,6 +109,25 @@ Neon Postgres + Drizzle (always)
 3. **Fix** — apply minimal change
 4. **Test** — loop until reproduction test and full suite are green
 5. **Record** — update wiki and log.md
+
+### Lesson Capture (6 steps) — see `wiki/workflows/lesson-capture.md`
+
+Mandatory whenever a session surfaces a self-discovered error, a required workaround, surprising behavior, or a user-reported breakage. Fix first, then record — a fix without a recorded lesson is incomplete work.
+
+1. **Resolve** — fix the problem completely first (Bug Fix workflow for user-reported errors)
+2. **Locate** — `kb_search` for the wiki page that owns the topic; prefer adding to its Gotchas/Rules over creating a new page
+3. **Dedup check (hard gate)** — search for the lesson itself (symptom + error message) and read existing Gotchas/Rules; skip if already recorded, refine in place if incomplete, one canonical entry per lesson
+4. **Record** — symptom, root cause, resolution, prevention rule
+5. **Index** — update `wiki/index.md` for new pages or materially expanded scope
+6. **Log** — append to `wiki/log.md` and record via `kb_log`
+
+### Security Review Capture — see `wiki/architecture/security-findings.md`
+
+Mandatory around every security review (`/security-review`, `/code-review` with security scope, or any security-reviewer agent):
+
+1. **Before the review** — read `wiki/architecture/security-findings.md`; check every recorded vulnerability class against the code under review first.
+2. **After the review** — record each **confirmed** finding on that page under its category (class, found-in, severity, vulnerability, fix, prevention rule, detection hint). The Lesson Capture dedup gate applies: same class in a new context extends the existing finding, never duplicates it. Never paste live secrets or working exploit payloads into the vault.
+3. **Log** — every review (even zero-findings) gets a `wiki/log.md` entry with project, scope, outcome, and dismissed false positives; record via `kb_log`.
 
 ## Testing Philosophy
 
