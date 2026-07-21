@@ -11,7 +11,7 @@
 - **Migrations:** `supabase migration new` → SQL files → commit
 - **Need spatial/geo?** Enable PostGIS extension. See [[decisions/adr-001-supabase-postgis]].
 - **Need full-text search?** Postgres `tsvector`. Do not add Elasticsearch or Algolia.
-- **Need vector search?** Supabase `pgvector` extension. Only if the core loop is semantic search.
+- **Need vector search?** Supabase `pgvector` extension. Only if the core loop is semantic search. See [[architecture/embedding-models]] for embedding-model selection (small/on-device vs. API vs. large).
 - **Need key-value store?** A Postgres table with `key` and `value` columns. Do not add Redis for an MVP.
 - **Need realtime?** Supabase Realtime (websockets). Use sparingly — most MVPs don't need it.
 

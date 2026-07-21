@@ -99,6 +99,64 @@ A good agent system prompt has four sections:
 
 Keep system prompts under 2000 tokens. Longer prompts dilute the important instructions. If you need more context, put it in a tool that the agent can read on demand (like a knowledge base wiki — this system).
 
+## Prompt Storage: Where to Keep System Prompts
+
+System prompts for LLM agents have different requirements than regular code — they're iterated on frequently, benefit from being readable as prose, and ideally should be editable without a redeploy. The right storage location depends on the deployment environment.
+
+### Decision tree
+
+**Serverless (Vercel, Cloudflare Workers, Lambda)?**
+→ Do NOT use `fs.readFileSync` on `.md` files — the bundler won't include files it can't statically trace through imports. Use TypeScript template literals in `.ts` files instead. They're functionally identical to markdown (just prose in a string) but are guaranteed to be bundled.
+
+**Need non-developer editing or deploy-free iteration?**
+→ Store prompts in KV (Cloudflare KV, Upstash, Vercel KV). Load at request time. Keep `.ts` fallback defaults in the codebase.
+
+**Long-running process (Docker, fly.io, Railway)?**
+→ `.md` files on disk are fine. `fs.readFileSync` with `path.join(process.cwd(), 'prompts/...')` works reliably.
+
+### The shared persona + topic file pattern
+
+When a single agent voice needs to serve multiple contexts (e.g. separate newsletters per topic), split prompts into:
+
+```
+lib/pipeline/prompts/
+  shared.ts      ← persona, voice, universal output rules
+  nl_ai.ts       ← topic-specific categories, lens, skepticism heuristics
+  nl_crypto.ts
+  index.ts       ← assembles TOPIC_PROMPTS record
+```
+
+Each topic file imports `SHARED_PERSONA` and appends its own domain rules. This means:
+- Voice changes in one place (`shared.ts`) propagate everywhere
+- Topic-specific curation logic stays isolated and independently editable
+- The bundler traces the import graph and includes all files automatically
+
+### Why not `.md` files in serverless?
+
+Vercel/Turbopack/webpack only bundles files reachable via `import`/`require`. A `.md` file in `lib/prompts/` that isn't imported gets silently excluded from the function bundle. You'd need raw-loader or webpack config to make it importable — overhead with no practical benefit, since a TypeScript template literal reads identically as prose.
+
+The upgrade path if you want markdown editing without redeploy: store prompts in Cloudflare KV, load them in the workflow step, fall back to the `.ts` defaults if KV returns null.
+
+### Prompt composition pattern
+
+```typescript
+// shared.ts
+export const SHARED_PERSONA = `
+## Who You Are
+[voice, tone, story selection tiers, universal output rules]
+`;
+
+// nl_ai.ts
+import { SHARED_PERSONA } from './shared';
+export const AI_PROMPT = `${SHARED_PERSONA}
+
+## Your Assignment: AI Brief
+[topic-specific lens, skepticism heuristics, output format]
+`;
+```
+
+This is the same pattern as CSS variables or design tokens — one source of truth for the shared layer, overridden at the specific layer.
+
 ## When Not to Use an Agent
 
 Not everything needs an agent. Use a simple script when:
