@@ -1,0 +1,3 @@
+claude-config/settings.json filter=anonpath
+commands/process-tips.md filter=anonpath
+commands/tip.md filter=anonpath
