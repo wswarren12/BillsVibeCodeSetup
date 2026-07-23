@@ -2,7 +2,7 @@
 description: "Quickly capture a coding tip (URL + optional note) to the knowledge base inbox"
 ---
 
-You are capturing a coding tip to the knowledge base inbox at `/Users/williamwarren/Obsidian/VibeCoding/raw/tips/inbox.md`.
+You are capturing a coding tip to the knowledge base inbox at `/Users/[youruser]/Obsidian/VibeCoding/raw/tips/inbox.md`.
 
 ## Arguments
 
@@ -31,7 +31,7 @@ If `$ARGUMENTS` is empty, ask the user what they want to capture (URL and/or not
 
    Include the blank line before the heading so entries are visually separated.
 
-3. **Append the entry** to `/Users/williamwarren/Obsidian/VibeCoding/raw/tips/inbox.md` using the Bash tool with a heredoc append (`>>`). Do not use Write or Edit — appending preserves the append-only semantics of the inbox.
+3. **Append the entry** to `/Users/[youruser]/Obsidian/VibeCoding/raw/tips/inbox.md` using the Bash tool with a heredoc append (`>>`). Do not use Write or Edit — appending preserves the append-only semantics of the inbox.
 
 4. **Confirm briefly** with a one-line status message showing the timestamp and whether the entry has a note or is flagged for transcription. Nothing else. Example: `Captured 2026-04-09T14:32 — note included` or `Captured 2026-04-09T14:32 — bare URL, will transcribe on /process-tips`.
 

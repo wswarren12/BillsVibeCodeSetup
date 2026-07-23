@@ -4,21 +4,21 @@ description: "Batch-process raw/tips/inbox.md: pull from Apple Notes, transcribe
 
 You are running the batch processor for the coding tips inbox in the VibeCoding knowledge base.
 
-Follow the workflow at `/Users/williamwarren/Obsidian/VibeCoding/wiki/workflows/tips-ingest.md` for routing conventions and rules.
+Follow the workflow at `/Users/[youruser]/Obsidian/VibeCoding/wiki/workflows/tips-ingest.md` for routing conventions and rules.
 
 ## Step 1: Pull from Apple Notes
 
 Run the Apple Notes import script to drain any mobile captures into the inbox:
 
 ```bash
-/Users/williamwarren/Obsidian/VibeCoding/scripts/import-apple-notes.sh
+/Users/[youruser]/Obsidian/VibeCoding/scripts/import-apple-notes.sh
 ```
 
 Report what was imported (or "nothing to import"). Don't fail if Apple Notes is empty or the note doesn't exist — the script handles both gracefully.
 
 ## Step 2: Read the inbox
 
-Read `/Users/williamwarren/Obsidian/VibeCoding/raw/tips/inbox.md` in full.
+Read `/Users/[youruser]/Obsidian/VibeCoding/raw/tips/inbox.md` in full.
 
 Entries are separated by `---` and sit beneath the inbox template header. Parse each entry as one of:
 
@@ -87,8 +87,8 @@ For each approved proposal:
 Run the knowledge base linter to verify nothing broke:
 
 ```bash
-cd /Users/williamwarren/Obsidian/VibeCoding/mcp-server
-node --import tsx --input-type=module -e "import { executeLint } from './src/tools/lint.ts'; const r = await executeLint('/Users/williamwarren/Obsidian/VibeCoding'); console.log(JSON.stringify(r.stats)); r.issues.forEach(i => console.log(i.type, i.page, i.message));"
+cd /Users/[youruser]/Obsidian/VibeCoding/mcp-server
+node --import tsx --input-type=module -e "import { executeLint } from './src/tools/lint.ts'; const r = await executeLint('/Users/[youruser]/Obsidian/VibeCoding'); console.log(JSON.stringify(r.stats)); r.issues.forEach(i => console.log(i.type, i.page, i.message));"
 ```
 
 Fix any broken links before continuing.
@@ -107,7 +107,7 @@ After archiving, the inbox should contain only the template header and any defer
 
 ## Step 7: Log and report
 
-Append an entry to `/Users/williamwarren/Obsidian/VibeCoding/wiki/log.md`:
+Append an entry to `/Users/[youruser]/Obsidian/VibeCoding/wiki/log.md`:
 
 ```markdown
 ## [YYYY-MM-DD] tips-ingest | Batch <N>
