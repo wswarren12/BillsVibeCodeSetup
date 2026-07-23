@@ -85,6 +85,15 @@ Requires `output: "standalone"` in `next.config.js`.
 
 This stack is the **production tier** of [[architecture/database]] and [[architecture/api-design]]. For the MVP tier (Supabase client direct, no Server Actions layer), see the Supabase sections in those pages.
 
+## Gotchas
+
+### Nested `<a>` inside a design-system nav slot → app-wide hydration failure (2026-07)
+
+- **Symptom:** every page throws React #418/#423 in production (`Hydration failed…`, `…entire root will switch to client rendering`); intermittently pages render an **empty `<main>`** when recovery fails, breaking E2E tests far from the nav. Dev console names it: `In HTML, <a> cannot be a descendant of <a>`.
+- **Root cause:** passed a Next `<Link>` as the `logo` prop of a design-system `NavBar` that already wraps the logo slot in its own `<a href={logoHref}>`. Nested anchors are invalid HTML, so the browser re-parents the DOM before hydration and the server/client trees never match.
+- **Resolution:** pass plain content to the slot and use the component's own `logoHref` prop for navigation.
+- **Prevention rule:** before wrapping a design-system slot (`logo`, `title`, `action`, list items…) in `<Link>`/`<a>` or `<button>`, read the component source to see whether the slot is already rendered inside an interactive element — use the component's `href`/`onClick` prop instead. Treat any React #418/#423 in a Next app as "find the invalid HTML nesting first" (anchors in anchors, `<div>` in `<p>`, buttons in buttons).
+
 ## Related
 
 - [[patterns/file-structure]] — Canonical Next.js layout

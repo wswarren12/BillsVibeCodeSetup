@@ -124,6 +124,16 @@ test("user can complete checkout with valid card", async ({ page }) => {
 - **Don't mock databases.** Use a real test database (docker-compose or a Supabase test project).
 - **Don't test implementation details.** Test behavior the user can see.
 - **Use `data-testid` attributes** for Playwright selectors. Don't rely on CSS classes or text content.
+- **External-SSO identity → env-gated test shim.** When auth comes from a platform cookie you can't mint locally, add a dev-only identity shim so the full authorization matrix runs in unit + E2E tests. Canonical pattern: [[patterns/pln-ai-apps]].
+
+## Gotchas
+
+### Playwright `reuseExistingServer` silently tests a stale build (2026-07)
+
+- **Symptom:** an E2E suite that passed keeps failing after a code fix — or fails in ways matching *already-fixed* bugs; the run seems slow/hung; failures make no sense against current source.
+- **Root cause:** `webServer.reuseExistingServer: true` makes Playwright adopt *anything* already listening on the port. A leftover server from a manual debugging session (started before the fix, with old `.next` output and a warm in-memory store) answered the health URL, so the entire suite ran against the outdated build.
+- **Resolution:** kill the stale process (`lsof -iTCP:<port> -sTCP:LISTEN`), rerun — suite went from broadly failing to fully green.
+- **Prevention rule:** when using `reuseExistingServer: true` locally, verify what owns the port before every debugging-session rerun, and always kill ad-hoc servers you start on the test port (start probes on a *different* port). If E2E failures contradict a fix you just made and verified, suspect the server build before the code.
 
 ## The One Rule
 

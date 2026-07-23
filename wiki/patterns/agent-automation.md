@@ -64,6 +64,27 @@ const toolResults = response.content
 
 **Keep MCP server lists minimal.** Only connect the servers the agent actually needs for the current task. Each connected server adds tools to the LLM's context, which increases confusion and latency.
 
+### Gotcha: hand-relaying binary tool output corrupts it — use checksums to detect and repair
+
+- **Symptom:** an MCP tool returned a file as a base64 string in the tool result; the agent re-typed it into a `Write` call to get it on disk, and the decoded zip failed mid-extraction (`zlib.error: invalid code lengths set`).
+- **Root cause:** LLM "transcription" of long high-entropy strings (base64, hex, minified blobs) from context into a new tool call is lossy — a single wrong character corrupts the whole binary. There is no direct tool-result→disk path, so any manual relay carries this risk.
+- **Resolution:** container formats carry integrity metadata — a ZIP central directory stores a CRC32 per entry. A single-byte brute force over the corrupted entry's compressed bytes (size × 256 trials, verified against the stored CRC32) recovered the exact original in seconds.
+- **Prevention rules:**
+  1. Avoid hand-relaying binary/base64 tool output whenever a fetchable path exists (URL + `curl`, CLI with auth, script the API directly).
+  2. If relaying is unavoidable, verify immediately after decode (zip CRC via full extraction, `shasum` if a digest is known) before building on the data.
+  3. When a checksummed container is corrupted, try CRC-guided single-byte repair before re-fetching — cheap and exact.
+
+### Gotcha: stale MCP OAuth client registration survives restarts — clear the cached credential, don't retry the flow
+
+- **Symptom:** an OAuth-based MCP server (e.g. Supabase at `mcp.supabase.com`) fails to authenticate with `{"message":"Unrecognized client_id"}` on the provider's authorize page. Restarting the client app, re-running the auth flow, and re-pasting callback URLs all fail identically.
+- **Root cause:** MCP servers using OAuth 2.1 rely on Dynamic Client Registration — the client (Claude Code) registers itself once with the provider and caches the resulting `client_id` (on macOS: keychain item `Claude Code-credentials`, under the `mcpOAuth` key). If the provider prunes that registration server-side, the cached copy lives on and every new auth attempt replays the dead `client_id`. Restarts only clear in-memory state; credential caches on disk/keychain survive them.
+- **Resolution:** delete the cached registration for that one server from the credentials store (back up the blob to a *separate keychain item* first — it contains live tokens, never write it to a plaintext file), then trigger the auth flow again. The client re-registers, gets a fresh `client_id`, and the flow completes. A secondary trap: each auth attempt also generates one-time PKCE/`state` values and a temporary localhost callback listener, so authorization or callback URLs from a previous session are always dead — never reuse them.
+- **Prevention rules:**
+  1. When an OAuth flow fails with `Unrecognized client_id` (or `invalid_client`), suspect stale cached client registration first — do not keep retrying the flow or restarting the app; neither touches the cache.
+  2. Find the cache by grepping the credentials store for the exact `client_id` shown in the failing authorize URL; delete only that server's entry.
+  3. Verify the fix by confirming the next authorize URL carries a *different* `client_id` before sending the user to the browser.
+  4. Only complete OAuth flows started in the current session; treat any auth URL from before a restart as invalid.
+
 ## State Between Agent Turns
 
 Agents that span multiple turns (conversations, multi-step workflows) need a strategy for state:

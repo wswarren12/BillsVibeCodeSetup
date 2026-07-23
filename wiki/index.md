@@ -14,7 +14,7 @@ The constitution. Every other page defers to these.
 
 ## Stacks
 
-- [[stacks/web]] — Next.js App Router, Server Components, TypeScript, Tailwind (production tier)
+- [[stacks/web]] — Next.js App Router, Server Components, TypeScript, Tailwind (production tier); Gotchas incl. hydration
 - [[stacks/mobile]] — React Native + Expo managed workflow
 - [[stacks/agents]] — Python 3.12+ AI agent stack
 - [[stacks/web3]] — Scaffold-ETH 2, Solidity, Hardhat
@@ -27,7 +27,7 @@ The constitution. Every other page defers to these.
 - [[architecture/auth]] — Authentication: Supabase Auth or Privy
 - [[architecture/security]] — Minimum security baseline: env vars, RLS, CORS, validation
 - [[architecture/security-findings]] — Catalog of vulnerabilities found in security reviews: class, fix, prevention rule, detection hint — read before any review or security-sensitive feature
-- [[architecture/testing]] — Inverted pyramid, BDD + Playwright, what NOT to test
+- [[architecture/testing]] — Inverted pyramid, BDD + Playwright, what NOT to test, Playwright gotchas
 - [[architecture/styling]] — CSS/styling approach decision tree
 - [[architecture/payments]] — Stripe integration: webhook handler, redirect URL hygiene, mode-scoping, production-learned gotchas
 - [[architecture/hosting]] — Hosting and deployment decision tree
@@ -42,9 +42,10 @@ The constitution. Every other page defers to these.
 - [[patterns/file-structure]] — Canonical folder layouts for RN+Expo, Next.js, Supabase, agents
 - [[patterns/data-modeling]] — JSONB, enums, UUIDs, TIMESTAMPTZ, RLS, PostGIS
 - [[patterns/data-flow]] — Supabase client IS the API, Edge Functions, error handling, realtime
-- [[patterns/agent-automation]] — Plan-execute-validate loop, tool schema design, MCP integration
+- [[patterns/agent-automation]] — Plan-execute-validate loop, tool schema design, MCP integration; Gotchas incl. binary relay corruption, stale MCP OAuth client registration
 - [[patterns/n8n-llm-workflows]] — n8n for LLM/chatbot workflows: execution billing, $env/$vars Cloud split, webhook-over-chat-trigger, local-testing CORS gotchas (no wildcard ports; localhost ≠ 127.0.0.1; curl can't reproduce), headless CLI import, generate-don't-hand-edit
 - [[patterns/llm-bot-structural-defense]] — Code-layer guarantees vs prompt-layer persuasion for LLM bots; deterministic-first testing with zero live API calls
+- [[patterns/pln-ai-apps]] — PLN AI App Starter Kit (v1.4): deploy contract, member-context-has-no-email gotcha, design-system alias mapping, external-SSO test-identity shim
 
 ## Workflows
 

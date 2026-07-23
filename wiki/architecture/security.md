@@ -24,6 +24,7 @@ export const config = {
 One place to see all config, type safety, build-time crash if a variable is missing.
 
 - **Distinguish public vs. private env vars.** In Next.js, only `NEXT_PUBLIC_`-prefixed vars ship to the browser. The Supabase anon key is public by design; the service role key is private and must never appear in client code.
+- **Gotcha: don't shell-`source` `.env` files in ad-hoc scripts.** Symptom: `set -a && source .env.local` fails with `unmatched '` (zsh) when any value contains an apostrophe or other shell metacharacter — dotenv files are KEY=VALUE, not shell syntax, so unquoted values break sourcing. Resolution: parse the file with a dotenv-style parser instead (Node one-liner matching `^([A-Z_0-9]+)=(.*)$`, `dotenv` package, or `npx dotenv-cli`). Prevention rule: treat `.env*` as data files; only a real dotenv parser reads them, never `source`.
 
 ## Row-Level Security (RLS)
 
