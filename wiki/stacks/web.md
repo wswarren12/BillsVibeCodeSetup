@@ -94,6 +94,14 @@ This stack is the **production tier** of [[architecture/database]] and [[archite
 - **Resolution:** pass plain content to the slot and use the component's own `logoHref` prop for navigation.
 - **Prevention rule:** before wrapping a design-system slot (`logo`, `title`, `action`, list items…) in `<Link>`/`<a>` or `<button>`, read the component source to see whether the slot is already rendered inside an interactive element — use the component's `href`/`onClick` prop instead. Treat any React #418/#423 in a Next app as "find the invalid HTML nesting first" (anchors in anchors, `<div>` in `<p>`, buttons in buttons).
 
+### Middleware `matcher` with a bare dynamic segment silently never matches (Next 14) (2026-08)
+
+- **Symptom:** `middleware.ts` compiles (build even prints `ƒ Middleware`), but requests it should intercept pass straight through to the page — no rewrite, no error anywhere.
+- **Root cause:** `export const config = { matcher: '/agent/:token' }` compiles into a broken route regexp in Next 14 — `.next/server/middleware-manifest.json` shows `^…\/agent(?:\/(.json))?$`: the `:token` param is dropped, so only `/agent` itself (and `_next/data` `.json` forms) match. Wildcard matchers like `/agent/:path*` compile correctly.
+- **Resolution:** use a broader wildcard matcher (`'/agent/:path*'`) and enforce the exact path shape in code (`/^\/agent\/[^/]+$/.test(pathname)`).
+- **Prevention rule:** after adding or changing a middleware `matcher`, verify the compiled `matchers[].regexp` in `.next/server/middleware-manifest.json` (or curl the route) before trusting it — a matcher that fails to compile the way you meant is silent. Prefer `:path*` + in-code checks over precise single-segment matchers.
+- **Detection hint:** middleware "not running" for some paths + a manifest regexp with your param name missing.
+
 ## Related
 
 - [[patterns/file-structure]] — Canonical Next.js layout

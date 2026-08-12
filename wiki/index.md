@@ -14,7 +14,7 @@ The constitution. Every other page defers to these.
 
 ## Stacks
 
-- [[stacks/web]] — Next.js App Router, Server Components, TypeScript, Tailwind (production tier); Gotchas incl. hydration
+- [[stacks/web]] — Next.js App Router, Server Components, TypeScript, Tailwind (production tier); Gotchas incl. hydration, middleware matcher
 - [[stacks/mobile]] — React Native + Expo managed workflow
 - [[stacks/agents]] — Python 3.12+ AI agent stack
 - [[stacks/web3]] — Scaffold-ETH 2, Solidity, Hardhat
@@ -42,9 +42,10 @@ The constitution. Every other page defers to these.
 - [[patterns/file-structure]] — Canonical folder layouts for RN+Expo, Next.js, Supabase, agents
 - [[patterns/data-modeling]] — JSONB, enums, UUIDs, TIMESTAMPTZ, RLS, PostGIS
 - [[patterns/data-flow]] — Supabase client IS the API, Edge Functions, error handling, realtime
-- [[patterns/agent-automation]] — Plan-execute-validate loop, tool schema design, MCP integration; Gotchas incl. binary relay corruption, stale MCP OAuth client registration
+- [[patterns/agent-automation]] — Plan-execute-validate loop, tool schema design, MCP integration; Gotchas incl. binary relay corruption, stale MCP OAuth client registration, sudo-in-TTY-less-shells (osascript admin route)
+- [[patterns/dev-environment]] — macOS toolchain gotchas: stale /usr/local Node shadowing nvm's npm (which -a + npm debug-log line 0 diagnosis), npm engine-check patch bumps
 - [[patterns/n8n-llm-workflows]] — n8n for LLM/chatbot workflows: execution billing, $env/$vars Cloud split, webhook-over-chat-trigger, local-testing CORS gotchas (no wildcard ports; localhost ≠ 127.0.0.1; curl can't reproduce), headless CLI import, generate-don't-hand-edit
-- [[patterns/llm-bot-structural-defense]] — Code-layer guarantees vs prompt-layer persuasion for LLM bots; deterministic-first testing with zero live API calls
+- [[patterns/llm-bot-structural-defense]] — Code-layer guarantees vs prompt-layer persuasion for LLM bots; deterministic-first testing with zero live API calls; semantic validation windows + entity-extraction contracts (parseable is not eligible)
 - [[patterns/pln-ai-apps]] — PLN AI App Starter Kit (v1.4): deploy contract, member-context-has-no-email gotcha, design-system alias mapping, external-SSO test-identity shim
 
 ## Workflows

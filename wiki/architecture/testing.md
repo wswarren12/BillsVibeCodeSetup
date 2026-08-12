@@ -134,6 +134,28 @@ test("user can complete checkout with valid card", async ({ page }) => {
 - **Root cause:** `webServer.reuseExistingServer: true` makes Playwright adopt *anything* already listening on the port. A leftover server from a manual debugging session (started before the fix, with old `.next` output and a warm in-memory store) answered the health URL, so the entire suite ran against the outdated build.
 - **Resolution:** kill the stale process (`lsof -iTCP:<port> -sTCP:LISTEN`), rerun — suite went from broadly failing to fully green.
 - **Prevention rule:** when using `reuseExistingServer: true` locally, verify what owns the port before every debugging-session rerun, and always kill ad-hoc servers you start on the test port (start probes on a *different* port). If E2E failures contradict a fix you just made and verified, suspect the server build before the code.
+- **Variant (2026-07):** the stale artifact can be the *build*, not the server. `git stash` → `npm run build` (to baseline-test) → `git stash pop` leaves `.next` compiled from the stashed tree; the next `playwright test` starts a *fresh* server that serves the old build, so new tests fail on missing testids. After any stash/checkout dance that touched source, rebuild before rerunning E2E — the failure signature is "exactly the tests exercising new UI fail; API/unit tests pass".
+
+### Vitest run from the wrong cwd: "Cannot find package '@/…'" looks like broken aliases (2026-08)
+
+- **Symptom:** `npx vitest run tests/…/file.test.ts` fails with `Error: Cannot find package '@/lib/…'` (Node's bare-specifier phrasing) on imports that resolved fine earlier the same session; switching one import to a relative path just moves the error one level deeper into the module graph. Easy to misread as a broken/new-file alias problem and burn cycles on cache-clearing and path experiments.
+- **Root cause:** the shell's persistent working directory had drifted to the repo root (a `cd repoRoot && git …` in an earlier command). From there vitest still *finds and runs* the nested app's test file (path arg resolves, config discovered oddly), but the `vitest.config.ts` `resolve.alias` never applies, so every `@/` specifier falls through to Node as a bare package. The tell: file labels in output show an unexpected prefix (`app/tests/…` instead of `tests/…`), and a control run of a previously-green suite now fails identically.
+- **Resolution:** re-run from the package dir (`cd <app> && npx vitest run …`) — everything passes unchanged.
+- **Prevention rule:** when alias imports "suddenly" stop resolving, first re-run a suite that was green earlier — if it now fails too, suspect environment (cwd, node version), not the new code. Check the path prefix on the FAIL line before touching config or imports. In agent shells, prefer `cd <pkg> && <cmd>` in the same compound command over relying on cwd persistence.
+
+### Reopening a Radix Dialog/Drawer mid-close-animation is dropped → flaky E2E (2026-07)
+
+- **Symptom:** a Playwright test presses `Escape` (or otherwise closes a Radix Dialog/Drawer) and immediately re-triggers it open, then asserts on the reopened content. Fails intermittently (~50–65% without retries) with "element(s) not found"; passes on retry. The network shows the reopen's data fetch *succeeding*, so the data path is fine — only the dialog content never becomes visible.
+- **Root cause:** the drawer has an exit animation (e.g. `slideOutRight 200ms` on `[data-state='closed']`). Radix keeps the content mounted during that animation; a reopen dispatched inside the ~200ms exit window gets swallowed by the presence/animation machinery, so `data-state` never returns to `open`.
+- **Resolution:** wait for the close to finish before reopening — assert the drawer's own body testid is hidden first: `await expect(page.getByTestId('share-panel')).toBeHidden();` then click the trigger again. Deterministic (25/25 with `--repeat-each=5 --retries=0`).
+- **Prevention rule:** never chain close→immediate-reopen of an animated Radix overlay in a test (or product code) without waiting for the exit to complete. A succeeding data fetch on reopen while the element stays "not found" is the tell — suspect the animation race, not the fetch. Diagnose from the trace's network log (fetch 200 = data fine) + `error-context.md` snapshot (drawer shown closed).
+
+### Open Radix modal makes background elements invisible to `getByRole` (2026-07)
+
+- **Symptom:** with a Radix modal Dialog/Drawer open, `page.getByRole('button', { name: 'X' }).click()` on an element *outside* the overlay (e.g. a nav-bar avatar) times out with "waiting for getByRole(...)" — the locator never resolves, so the click is never attempted. A CSS/testid locator for the same element finds it (`count() === 1`).
+- **Root cause:** modal Radix overlays set `aria-hidden="true"` on the rest of the page (the sibling subtrees, including the whole `<header>`). Playwright's role-based locators query the accessibility tree, which excludes `aria-hidden` subtrees — so the element exists and is visually present but is unmatchable *by role*. Deadlock: the by-role click that would have dismissed the overlay can't run because the overlay hides its target.
+- **Resolution:** close the overlay first (`Escape` + `await expect(drawerBody).toBeHidden()`), then interact with the background element by role.
+- **Prevention rule:** in E2E flows, never target background page chrome with `getByRole` while a modal overlay is open — close it first. Diagnostic tell: `getByRole` count 0 but `[aria-label=...]`/testid count 1 → an ancestor is `aria-hidden`, not a missing element. Such a test can look "passing" historically and then break; treat it as broken by design.
 
 ## The One Rule
 

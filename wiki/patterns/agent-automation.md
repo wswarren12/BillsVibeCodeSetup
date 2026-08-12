@@ -85,6 +85,16 @@ const toolResults = response.content
   3. Verify the fix by confirming the next authorize URL carries a *different* `client_id` before sending the user to the browser.
   4. Only complete OAuth flows started in the current session; treat any auth URL from before a restart as invalid.
 
+### Gotcha: sudo fails in TTY-less agent shells — use osascript admin privileges for GUI-session macOS hosts
+
+- **Symptom:** a privileged command run from an agent's shell (including Claude Code's `!` bash-passthrough) fails with `sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper`. Retrying, or having the user type the same `! sudo …` line, fails identically.
+- **Root cause:** agent-executed shells and the `!` passthrough have no TTY attached, and `sudo` refuses to read a password without one (absent `-S`/askpass). This is environmental, not a permissions problem — the user's account has admin rights; there is simply no terminal to prompt on.
+- **Resolution:** on a macOS host where the user is present at the GUI, run the privileged step as `osascript -e 'do shell script "<command>" with administrator privileges'` — macOS shows its native password dialog, the user authenticates there, and the command runs as root. Works fine from a sandboxed-off agent shell.
+- **Prevention rules:**
+  1. Never suggest the user run `sudo` through an agent's shell passthrough (`!` prefix) — it has no TTY either; direct them to a real terminal, or use the osascript route.
+  2. Batch privileged operations into as few osascript calls as possible — each call is a separate password dialog.
+  3. `sudo -n true` distinguishes "passwordless sudo available" from "needs a prompt" before choosing a strategy — but expect agent permission systems to deny bare sudo attempts outright; that denial is a signal to switch routes, not retry.
+
 ## State Between Agent Turns
 
 Agents that span multiple turns (conversations, multi-step workflows) need a strategy for state:

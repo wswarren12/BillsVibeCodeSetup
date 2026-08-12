@@ -43,6 +43,53 @@ via the LabOS draft flow, deploy via the `deploy-to-labs` skill.
   for `from '@` and map every internal alias in the consumer tsconfig before
   first build.
 
+### Connect-flow approval links never seen: don't sandwich user-action links between tool calls (2026-07)
+
+- **Symptom:** repeated LabOS connect sessions expire unapproved (each lives ~10
+  min) even though the member says they're ready; member later reports "I never
+  saw the link". Seven sessions burned in one deploy.
+- **Root cause:** the agent posted the `connectUrl` mid-turn and then immediately
+  started a blocking poll tool-call in the same turn. Harness behavior: text
+  between tool calls may not be shown to the user — only the turn's final
+  message reliably renders. The member literally never saw any link; meanwhile
+  the poll blocked the conversation so they couldn't even ask.
+- **Resolution:** create the session, start the poll+upload watcher as a
+  **background** task first, then end the turn with the link as the final
+  message (big, isolated, with the code and expiry). Approval → watcher
+  auto-uploads → agent reports the `appPageUrl`.
+- **Prevention rule:** any time-limited link the user must open (`connectUrl`,
+  OAuth pages, approval codes) goes in the FINAL text of a turn with no tool
+  calls after it; long-running waits on user action run as background tasks,
+  never as foreground polls. Also sync first ("reply go when you're at the
+  browser, signed in") so the 10-minute window doesn't start while they're away.
+
+### LabOS Deploy click "blocked by CORS" is usually a masked gateway timeout — the deploy often succeeded (2026-08)
+
+- **Symptom:** the member clicks **Deploy** on the app's LabOS page and gets
+  `Access to fetch at 'https://api-directory.plnetwork.io/v1/ai-apps/<uid>/deploy'
+  … blocked by CORS policy: No 'Access-Control-Allow-Origin' header` — and
+  concludes the redeploy is stuck/broken.
+- **Root cause:** the Deploy call triggers a slow server-side container build.
+  When the gateway times out, its error response is emitted without CORS
+  headers, and the browser reports the whole thing as a CORS block. The API's
+  CORS is actually fine (an `OPTIONS` preflight with
+  `Origin: https://directory.plnetwork.io` returns 204 + correct
+  `access-control-allow-origin`; even 403s carry it) — and the build keeps
+  running behind the failed response. Sibling of the documented "ZIP upload
+  504s even though the build succeeded" quirk.
+- **Resolution:** verify what's actually serving instead of re-clicking:
+  `GET /health` on `https://<appId>.deployment.plnetwork.io` (200), then fetch
+  a page HTML, extract its `/_next/static/chunks/app/...` chunk URL (use
+  `curl --globoff` — `%5B` in Next.js dynamic-route chunk paths otherwise
+  trips curl's glob parser), and grep for a marker string unique to the new
+  build (a new testid, dialog title, etc.). Marker present → deploy landed;
+  tell the member to hard-refresh (the iframe caches JS aggressively).
+- **Prevention rule:** treat browser "CORS" errors on PLN deploy actions as
+  *unproven failures*: probe the deployed artifact for a build marker before
+  retrying anything. Keep a grep-able marker string in mind per deploy (any
+  string added in that commit). Distinguishes the three look-alikes:
+  not-deployed vs. deployed-but-cached vs. genuinely-failed.
+
 ## Rules
 
 - **Test-identity shim for external-SSO apps:** identity arrives only as a
