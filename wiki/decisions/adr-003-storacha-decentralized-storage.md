@@ -1,7 +1,7 @@
 # ADR-003: Storacha for Decentralized Storage
 
 **Date:** 2026-04-09
-**Status:** Accepted
+**Status:** Superseded by [[decisions/adr-006-pinata-hot-ipfs]] — Storacha wound down April 2026 (team joined Filecoin Foundation; w3s.link gateway shut down May 31, 2026)
 **Source project:** Cairn (reference)
 
 ## Context

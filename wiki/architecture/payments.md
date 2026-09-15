@@ -93,5 +93,14 @@ When the same code path passes locally and 500s in production, suspect **env-val
 ### Don't trust your own repro until it matches prod
 While debugging the NewsBreef incident, an SDK replay using the same env var passed locally — because the harness's `clean()` helper trimmed the value before sending it. The production code path did not trim. When your reproduction script disagrees with prod, suspect the **reproduction**, not the platform. Strip any "helpful" sanitization out of the repro until it fails the same way prod does.
 
+## Gotchas (locally verified)
+
+### Billing access outlives a paid entitlement (NewsBreef, 2026-09-11)
+
+- **Symptom:** canceled/free-tier accounts lost both Stripe portal entry buttons despite retaining a billing customer and historical invoices.
+- **Root cause:** the UI gated portal access on current subscription tier, while the unchanged backend authorized it using the retained customer identity. Tier, billing identity, and actual newsletter delivery are different state.
+- **Resolution:** remove the tier gate from both UI callers; retain no-paid-plan wording and explain historical billing access. Null-tier/retained-customer browser fixtures exercise both entries; desktop/mobile captures were independently accepted. No Stripe configuration or backend change.
+- **Prevention rule:** trace all billing entry callers against the portal's actual eligibility rule; test canceled-with-customer and never-a-customer accounts separately. Do not infer active delivery from entitlement, or bill reduction from topic removal. Synthetic portal success proves local UI behavior only; live portal options, payment timing, and provider concurrency remain unverified.
+
 ## Sources
 - NewsBreef production incident, 2026-05-31 — trailing newline in `NEXT_PUBLIC_APP_URL` corrupted Stripe `success_url`; fix committed in `6616ae6` on `wswarren12/NewsBreef`.

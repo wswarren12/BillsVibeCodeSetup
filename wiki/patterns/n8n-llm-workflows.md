@@ -50,6 +50,7 @@ Debugged in full on the PLAA build (n8n 2.30.8); every point below cost real tim
 - **The production webhook URL only exists after Activation.** Unactivated workflows expose a one-shot `/webhook-test/` URL that requires clicking Execute per message. Activate before wiring any frontend.
 - **The error-workflow link cannot ship in the JSON.** Settings → Error Workflow must be selected manually after every import. Forgetting it silently disables error logging — put it in the runbook as a numbered step.
 - **Re-importing resets node credentials.** Credential ids in exported JSON are placeholders; every re-import means re-selecting credentials on flagged nodes. Budget for this in the config-sync procedure.
+- **Placeholders are not only credential ids — in-code secrets are placeholders too, and an API `PUT` pushes them straight to production.** *Symptom:* after deploying the generated export via `PUT /api/v1/workflows/{id}`, every request returned `403 Forbidden`; a full outage, because the shared-secret gate was comparing against the literal `REPLACE_AFTER_IMPORT`. *Root cause:* the generator deliberately keeps live secrets out of the committed export, so the placeholder appears in credential ids **and** inside a Code node's `const expected = "…"` abuse-gate secret. A merge that carefully preserved `credentials` still overwrote the in-code secret — credentials are the *obvious* live-only value, not the only one. *Resolution:* restore from a pre-deploy snapshot, then treat every live-only value the same way (credential ids, in-code secrets, node ids, `webhookId`, `settings.errorWorkflow`). *Prevention:* deploy through a script that (1) merges by node **name**, (2) **refuses to push any payload still containing the placeholder string anywhere** — grep the serialized payload, do not enumerate known fields — (3) snapshots the deployed workflow first and offers `--restore`, and (4) makes one real authenticated request after deploying, failing the run on 403. Structural verification cannot see a broken abuse gate; only a live request can.
 - **Re-import into the same workflow slot** (open workflow → ⋯ → Import from File) so the production webhook URL never changes across config syncs.
 - **Ship optional-credential nodes `disabled: true`.** An error-notification email node that needs SMTP blocks nothing if it ships disabled: the import works with zero credentials, errors still land in the execution log, and go-live is "enable node + attach credential." Log to the execution log *before* the notification node so the durable record never depends on the optional channel.
 
@@ -65,3 +66,85 @@ Defenses:
 ## Generate the workflow JSON, don't hand-edit it
 
 Workflow JSON with embedded Code-node logic drifts from its source instantly. Keep the Code-node bodies as real, importable modules (unit-testable), and generate the workflow JSON from them with a build script (`build-workflow.mjs` pattern) plus a validator script asserting topology invariants (node connections, model pins, no sub-workflows, retry settings). The n8n JSON becomes a build artifact; the modules are the source of truth. Same pattern for any config the workflow mirrors (activity catalogs, prompts): one repo source, one sync command.
+
+## Confirmation gates: whole-message intent, never token containment
+
+**Symptom (PLAA production smoke, 2026-08-24):** a labeled draft edit containing
+`Internal content library opt-in: yes` submitted the *previous* draft before the
+model could apply the edit. The next explicit `yes` then started a new model
+turn, making a successful Airtable write look like a missing receipt.
+
+**Root cause:** the deterministic confirmation regex matched `yes` (or another
+confirmation token) as a whole *word anywhere in the message*. “Whole word” is
+not “whole-message confirmation intent”; acknowledgement fields naturally
+contain yes/no inside substantive edits.
+
+**Resolution:** normalize punctuation/case, then compare the entire utterance to
+an allow-list (`yes`, `confirm`, `yes please submit`, `ok go ahead`, etc.). Add
+negative regression cases for acknowledgement/edit text containing `yes`.
+
+**Prevention rule:** a code-side confirmation gate may accept bounded polite
+phrases, but never substring/token containment. A message that carries any
+field value or edit must not submit a prior draft.
+
+## Cloud smoke tests: persistence beats receipt-copy matching
+
+When automating a conversational write flow, poll the destination by the
+session/idempotency key immediately after each confirmation turn. Stop as soon
+as the row exists and report receipt-copy mismatch separately. Otherwise a
+valid write followed by unexpected copy can make the harness send extra turns,
+start a new draft, or misreport persistence as failure. Always clean by the
+session/idempotency prefix in `finally`; retain serial-sequence gaps.
+
+## Test the generated glue, not just the modules it inlines
+
+A workflow generator that inlines pure lib modules into Code nodes leaves a
+seam: the lib is unit-tested, the generated wrapper is not. Both production
+breakages in one session lived in that seam — an undeclared variable
+(ReferenceError) and a gate that counted a return value wrongly.
+
+Execute the generated Code-node source directly in tests with stubbed platform
+globals (`$input`, `$()`, `$getWorkflowStaticData`). It is a ~30-line harness
+that runs the exact string you deploy, and it reproduces this class of failure
+that no lib-level test can see.
+
+Related trap: when you change what a shared return value MEANS (here: adding
+`pass` entries to a map that previously held only failures), every consumer that
+treated presence-as-problem silently inverts. Grep is not enough when consumers
+live inside generator template strings — give the concept one exported helper
+(`failedConstraintFields`) and make every caller use it.
+
+## An LLM reviewer has no "today" — and silence is not a pass
+
+Two defects that combine into confident, wrong rejections of valid answers:
+
+**Inject the current date into every model call that judges time.** A review
+model asked "is 2026-06-20 in the future?" answers from its training cutoff, not
+your clock: it rejected a date two months in the past as "in the future", with a
+fluent user-facing explanation. Any prompt whose criteria mention past/future/
+recency must carry today's date explicitly, and should be told which layer owns
+that decision.
+
+**A deterministic checker that only emits failures cannot correct a false
+failure.** The code layer validated dates/emails/URLs/acks and wrote a verdict
+only when something was *wrong*; the merge step then overlaid those verdicts on
+the model's. A field the code proved *valid* produced no entry, so the model's
+false "fail" survived unchallenged — the override was documented as "code always
+wins" but was really "code wins only when it objects". Make the deterministic
+layer assert **explicit passes** for the fields it fully decides, and leave
+genuinely subjective fields (prose substance) unasserted. Then "authoritative"
+means it in both directions.
+
+Corollary: don't let a model re-litigate through prose what a structured field
+already enforces. A past-only date question made the reviewer reject impact text
+phrased as "will help" — the timing was already proven by the date field.
+
+**Assert the transport contract's flags, not just the reply copy.** A smoke
+helper that returned only `json.output` could not observe that the deployed
+workflow's receipt reply omitted `event: "receipt"` — so the frontend never
+rendered its receipt card (and its buttons) while every test, local bench, and
+smoke run passed. *Root cause:* every mock sent the flag, so the mocks encoded
+an assumption production never satisfied. *Prevention:* for each field the
+frontend **branches on**, assert it end-to-end against the deployed system, and
+add a build gate pinning the responding node's shape. When a UI state renders
+only on a flag, a test that asserts the accompanying prose proves nothing.

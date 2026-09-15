@@ -95,6 +95,34 @@ const toolResults = response.content
   2. Batch privileged operations into as few osascript calls as possible — each call is a separate password dialog.
   3. `sudo -n true` distinguishes "passwordless sudo available" from "needs a prompt" before choosing a strategy — but expect agent permission systems to deny bare sudo attempts outright; that denial is a signal to switch routes, not retry.
 
+### Gotcha: exact-output shell checks must normalize BSD/GNU whitespace
+
+- **Symptom:** a verification command that counts matched files with `wc -l | grep -x 3` passes on one host but fails on macOS even though exactly three files matched.
+- **Root cause:** BSD `wc` pads numeric output with leading spaces, while the anchored `grep -x 3` accepts only the unpadded character `3`; the check tested presentation rather than the count.
+- **Resolution:** normalize whitespace or compare the numeric command substitution, for example: `test "$(... | wc -l | tr -d '[:space:]')" = 3`.
+- **Prevention rule:** verification contracts must normalize implementation-defined CLI formatting before exact comparisons; prefer exit-status predicates over matching human-formatted output.
+
+### Gotcha: sandbox temporary paths disappear after the tool returns
+
+- **Symptom:** a context-mode Python command reported a successful recovery snapshot, but the next shell call could not copy it (`No such file or directory`).
+- **Root cause:** `tempfile.mkdtemp()` inherited the tool's `.ctx-mode-*` temporary directory, which was cleaned after execution. A path printed in stdout did not make the artifact durable.
+- **Resolution (Terminally Product, 2026-09-09):** recreated the tracked patch, untracked-file archive and repository-state record at an explicit host path under `~/.pi/agent/recovery/`; a separate subsequent shell check confirmed both files remained.
+- **Prevention rule:** write cross-call handoffs/recovery artifacts directly to an explicit persistent destination outside the sandbox temp root, then verify existence from a later tool call. Keep default temporary paths only for data consumed within that same execution.
+
+### Gotcha: structured subagent output does not satisfy a separate file-only report
+
+- **Symptom:** the reviewer produced a valid structured verdict, but the workflow failed with `Required file-only output was not produced` for its requested Markdown report.
+- **Root cause:** the structured JSON artifact existed while the independent `outputMode: file-only` path did not. Success on one output contract did not satisfy the other.
+- **Resolution (Terminally Product, 2026-09-09):** recovered the structured result through native subagent status, preserved it, verified repository state, then continued through the same protocol using `outputSchema` with `output: false`. The focused reviewer returned its structured result inline and the workflow completed.
+- **Prevention rule:** for JSON-only reviewer decisions use the structured result directly; require a file-only artifact only when the run actually produces that file. An output-delivery failure is not a passing verdict—inspect the recovered result before proceeding (this one contained a real blocker).
+
+### Gotcha: prose in workflow JavaScript fails parsing before any child launches
+
+- **Symptom:** Terminally Product's workflow `26d0bbdd-f895-48d6-801a-bb58554fe7a3` failed JavaScript parsing at `(3:2628)`; zero child runs launched.
+- **Root cause:** long embedded task prose made executable string quoting fragile. A workflow submission is code, not an arbitrary Markdown container.
+- **Resolution (2026-09-11):** parent preserved worktree/diff/options, moved long instructions to a task file, used short quoted path strings, and passed native subagent validation (`ok:true`, no errors) before the explicitly identified same-protocol retry. No alternate execution mode or duplicate writer.
+- **Prevention rule:** keep prose in named files, preflight the exact executable workflow and output contract, confirm whether any child actually started before retrying, and preserve deliberate parent edits separately from known generated drift. A parse failure is not implementation progress.
+
 ## State Between Agent Turns
 
 Agents that span multiple turns (conversations, multi-step workflows) need a strategy for state:

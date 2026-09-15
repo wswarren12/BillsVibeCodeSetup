@@ -47,6 +47,25 @@ via the LabOS draft flow, deploy via the `deploy-to-labs` skill.
   for `from '@` and map every internal alias in the consumer tsconfig before
   first build.
 
+### Design-system Dropdown triggers inside overlays need forwarded refs and modal-level portals (2026-08)
+
+- **Symptom:** composing the canonical `Dropdown` with the canonical `Button`
+  logs “Function components cannot be given refs”; inside a modal, the menu is
+  visibly open but Playwright/browser clicks time out because the modal overlay
+  intercepts pointer events.
+- **Root cause:** Radix `Trigger asChild` attaches a ref to its child, so the
+  trigger component must use `forwardRef`. Dropdown content is portalled to the
+  document body, escaping the modal stacking context; the kit's
+  `--z-dropdown` (100) is below `--z-overlay`/`--z-modal` (300/400).
+- **Resolution:** make the vendored canonical `Button` forward its button ref,
+  and render Dropdown portal content above modal content but below toasts (for
+  the current token scale, `calc(var(--z-modal) + 2)`). Verify with a real
+  browser click from a dropdown nested in a modal, not only jsdom rendering.
+- **Prevention rule:** every Radix `asChild` trigger must forward refs, and every
+  portalled overlay primitive must be tested nested inside the highest overlay
+  where it is supported; never assume its local stacking context follows it
+  into the portal.
+
 ### Connect-flow approval links never seen: don't sandwich user-action links between tool calls (2026-07)
 
 - **Symptom:** repeated LabOS connect sessions expire unapproved (each lives ~10
@@ -113,6 +132,59 @@ via the LabOS draft flow, deploy via the `deploy-to-labs` skill.
 - **Prevention rule:** every background LLM job needs deadlines at both ends:
   an upstream request timeout on the worker and a total polling deadline on the
   client. Polling solves proxy idleness; it does not solve a hung worker.
+- **Buffered SDK streaming variant (Terminally Product, 2026-09-14):** a paid public evaluation reached research/SWOT but two nonstream structured audit attempts hit the SDK's 30-second timeout. A journal-whitelisted diagnostic confirmed timeout without exposing raw errors; neither request returned a message ID, so their cost remains unknown rather than zero. Buffer structured `stream.finalMessage()` privately, preserving schema/domain checks and no structured/thinking UI deltas. Keep the SDK 30-second establishment setting, zero retries and the separate 120-second whole-operation signal covering generation/repair/continuation. These are not identical end-to-end deadline semantics to the old nonstream request. A real SDK transport regression holds a partial response for 31 seconds, verifies no partial checkpoint, then completes; separate refusal/truncation/incomplete-stream and total-signal abort checks preserve gates. SDK incomplete-stream errors must map to provider pauses, not human FAQ questions. Do not increase ceilings or call mocked output live judgment.
+
+### Default model thinking can silently consume a structured-output budget (2026-08)
+
+- **Symptom:** Opus 5 returned HTTP 200 for a decision-table request, but the
+  JSON ended mid-string and failed validation twice. Raising `max_tokens` from
+  3,000 to 5,000 still produced truncated output. Advisor opinions from the
+  same shared client also sometimes ended mid-sentence.
+- **Root cause:** Opus 5 emits thinking blocks by default, and thinking tokens
+  count against `max_tokens`. In a bounded test, 3,513 of 5,000 output tokens
+  went to thinking, leaving only ~1,487 for the JSON text. The app joined only
+  text blocks, so the response looked mysteriously short. A second initial
+  assumption compounded the failure: `claude-sonnet-4-8` was not an available
+  API model ID and returned 404.
+- **Resolution:** query the provider's models endpoint before adopting a model
+  ID; use the confirmed `claude-opus-5`; send `thinking: {type: "disabled"}`
+  from the shared Anthropic helper so every configured `max_tokens` value is a
+  text budget; retain background polling for Opus latency. Verified with a real
+  agent-driven run that completed verdict + color-rated table.
+- **Prevention rule:** treat `max_tokens` as a combined reasoning-and-text
+  budget unless the provider explicitly says otherwise. For strict JSON and
+  other bounded structured output, disable thinking (or explicitly reserve a
+  measured reasoning allowance), inspect `stop_reason` and usage details when
+  output truncates, and validate runtime model IDs against the provider API.
+
+### A structured-output validator stricter than its own prompt hard-rejects valid LLM output (2026-08)
+
+- **Symptom:** The Decision Council's decision-table step failed on every
+  retry ("Drafting the decision table failed") for a rich, multi-jurisdiction
+  tax question. Runtime logs showed `malformed_decision_table: json=true` — the
+  model returned valid JSON that `validateDecisionTable` then returned `null`
+  for. Simpler decisions worked fine.
+- **Root cause:** The validator capped distinct row categories at 4
+  (`categoryOrder.length > 4` → reject), but the drafting prompt *named six*
+  familiar categories to use "when relevant" (Member, Operations, Technical,
+  Legal/Tax, Time/Cost, Risk) while telling the model to produce "2–4". A
+  genuinely multi-constituent decision uses 5–6 categories, so the model
+  obeyed the examples and the validator rejected it — deterministically, so
+  the one retry never helped. A row-count cap of 10 compounded it (6 categories
+  × 2 features = 12 rows).
+- **Resolution:** raise the validator ceilings to at least what the prompt can
+  elicit (categories 4→7, rows 10→14), align the prompt ("2–6 meaningful
+  categories"), and keep the guards that actually protect the render
+  (contiguous category groups, ≥1 group with >1 row, per-row cell count).
+  Reproduced deterministically by feeding a synthetic 5-category table straight
+  into `validateDecisionTable` (no model/API key needed) — added as a
+  regression test.
+- **Prevention rule:** a validator for LLM-generated structured output must be
+  **at least as permissive as the prompt that produces it** — the prompt's
+  examples and its numeric limits must agree, and the validator's limits must
+  be ≥ the prompt's. When output "fails validation twice", log *which* gate
+  rejected it and reproduce by calling the validator directly with a synthetic
+  payload before touching the model. See also [[default-model-thinking-budget]].
 
 ### Merging an app over the kit scaffold leaves placeholder files — and can copy secrets in (2026-08)
 
@@ -216,7 +288,45 @@ a response that couldn't come from the code being tested.
 - **Prevention:** never trust a health check on a port you didn't just bind.
   Check the listener owns the tree under test (`lsof -a -p <pid> -d cwd`) or
   start on a scratch port; treat `EADDRINUSE` in the log as an invalidated test,
-  not a warning.
+  not a warning. Even the correct-cwd Node process is stale after imported
+  renderer modules change: restart it, then inspect a newly generated artifact
+  (DOCX XML/font table, response marker, etc.), not only the edited source or tests.
+
+### Mirrored Postgres/Supabase migrations cannot assume Supabase roles exist (2026-08)
+
+- **Symptom:** a schema migration that works in Supabase fails on PLN-provisioned
+  Postgres at `GRANT ... TO service_role` or `REVOKE ... FROM anon` because those
+  Supabase-specific roles do not exist on plain Postgres.
+- **Root cause:** keeping one mirrored SQL migration for both stores preserves
+  schema parity, but role DDL is environment-specific even when tables and
+  functions are identical.
+- **Resolution:** keep the migration files byte-identical and wrap role-specific
+  grants/revokes in `DO` blocks that first check `pg_roles`; revoke function
+  execute from `PUBLIC` unconditionally. Direct Postgres continues under its
+  migration/runtime owner while Supabase grants only `service_role` access.
+- **Prevention rule:** every migration shared by Supabase and plain Postgres must
+  treat `anon`, `authenticated`, and `service_role` as optional roles. Never put
+  an unconditional reference to a Supabase role in mirrored SQL.
+
+### Sticky timeline header inside an `overflow-x` scroller never sticks vertically (Roadmapper, 2026-09)
+
+- **Symptom:** `.timeline-head { position: sticky; top: 0 }` looked correct in
+  CSS but month headings scrolled off with the page on tall roadmaps.
+- **Root cause:** `position: sticky` binds to the nearest scrolling ancestor.
+  The header lived inside `.timeline-scroll { overflow-x: auto }`, which makes
+  that box the scroll container — and it never scrolls vertically, so `top: 0`
+  had nothing to stick against. The *page* was the vertical scroller, but sticky
+  cannot see past an intermediate overflow box.
+- **Resolution:** make the same box the vertical scroller too:
+  `overflow: auto; max-height: calc(100dvh - nav - padding)`. The header then
+  pins to that box's top while rows scroll, and because it sits inside the
+  horizontally-scrolled inner element it stays column-aligned with the bars for
+  free. Verified with a Playwright metric test (header top == box top after
+  `scrollTop`; each `.lane-grid-line` left == the matching `.time-col` left).
+- **Prevention rule:** any 2-D grid needing a sticky axis header must put
+  *both* scroll axes on one element. If `overflow-x` is set anywhere between
+  the sticky element and the intended scroller, sticky-top is dead — assert
+  stickiness with a scroll-then-measure test rather than trusting the CSS.
 
 ## Rules
 
@@ -230,6 +340,17 @@ a response that couldn't come from the code being tested.
   in production because the env var is never set in the image.
 - **Slot props over Link-wrapping** when composing the kit's `pl-design-system`
   components — see the hydration gotcha on [[stacks/web]].
+- **Never land the deploy token on disk — extract it in-process.** The
+  `deploy-to-labs` skill requires the short-lived `deployToken` be held in
+  memory only. The natural shell pattern for the connect poll loop — capturing
+  the approved JSON to a temp file (`... > /tmp/token.json`) and reading it back
+  for the upload — violates this even if you `rm` it after. Instead pipe the
+  poll response straight into a shell variable
+  (`TOKEN=$(curl ... | python3 -c 'import json,sys;print(json.load(sys.stdin)["deployToken"])')`)
+  so the secret never touches the filesystem. Same rule as "no secrets in the
+  zip", one layer earlier: the token is a live credential tied to the approving
+  member for ~1h. Applies to any credential captured mid-flow (OAuth codes,
+  poll-returned tokens), not just PLN.
 
 ## Related
 

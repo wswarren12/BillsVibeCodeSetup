@@ -51,7 +51,29 @@ Populated by the Security Review Capture flow: after any security review (`/secu
 
 ### Authorization & Access Control (IDOR, RLS gaps)
 
-<!-- No findings recorded yet. -->
+### Sync/mirror propagation as a write channel — link creation under-authorized
+- **Found in:** roadmap-builder.4 (Roadmapper) — `app/src/lib/sync.ts` + `POST /api/roadmaps/[id]/items/import` (2026-08-14)
+- **Severity:** high
+- **Vulnerability:** cross-roadmap "linked item" import required only READ on the source roadmap. Since edits to any linked copy propagate to all copies without re-checking the caller's role on sibling roadmaps, a viewer of roadmap A could import A's item into their own roadmap and then write into A through the copy (read→write privilege escalation). Sprint create/update/delete propagated the same way.
+- **Fix:** creating a link is treated as a write on BOTH roadmaps — the import endpoint now requires owner/editor on the source (viewer → 403; invisible roadmap → 404). With that invariant, propagation-time checks are unnecessary: every sync group only spans roadmaps whose write-holders opted into shared editing. The invariant is documented at the top of `lib/sync.ts`.
+- **Prevention rule:** any feature that mirrors/propagates writes across authorization boundaries (linked records, shared embeds, sync groups) must authorize the LINK CREATION at the strictest tier of any write it will later enable — or re-check the actor's role on every propagation target. Read access to data is never sufficient to create a channel that can write it.
+- **Detect:** grep for propagation loops that call store write methods on rows fetched by group/link id (`listItemsBySyncGroup`, `listSprintsBySyncGroup`, or similar) and ask: "what was required to put a row into this group?" If the answer is less than write-on-that-row's-parent, it's exploitable.
+
+### Implicit temporary-schema precedence in SECURITY DEFINER audit lookup
+- **Found in:** PLAA Schemas — SQL function search paths / audit catalog lookup (2026-09-08)
+- **Severity:** medium
+- **Vulnerability:** a fixed search path that omitted `pg_temp` still allowed caller-created temporary catalog-name tables to precede real system catalogs during relation resolution, breaking or misdirecting audit-key lookup. Explicit application-table qualification alone did not protect unqualified catalog reads.
+- **Fix:** place `pg_catalog` first and explicit `pg_temp` last in every project function's fixed search path; restrict EXECUTE and schema CREATE. Regression test 030 creates conflicting temporary catalog names under an actual runtime role and verifies the audited API remains functional.
+- **Prevention rule:** include explicit `pg_temp` last in definer paths and qualify sensitive relations; test catalog-name shadowing as well as application-table shadowing.
+- **Detect:** inspect `pg_proc.proconfig`, and test caller-created temporary names against all definer lookup paths.
+
+### Review audit actor loses the operator's text identity
+- **Found in:** PLAA Schemas — `plaa.audit_write`, submission/crosswalk review (2026-09-08)
+- **Severity:** low
+- **Vulnerability:** audit actor extraction omitted `reviewed_by`, falling back to a shared database principal for review mutations even though the supplied reviewer was present in the row. The after-image retained evidence, but the dedicated actor field was misleading for operator attribution.
+- **Fix:** select the changed reviewer principal for review audit entries, retaining the separate database principal and before/after evidence; regression test 032 verifies both review paths.
+- **Prevention rule:** audit the actor of the mutation, not merely the row creator or shared service account; retain database identity separately and validate the backend's actor trust contract.
+- **Detect:** inspect audit trigger field precedence for every mutation workflow and assert actual actor values, not just existence of an audit row.
 
 ### Input Validation & Injection
 
@@ -64,6 +86,14 @@ Populated by the Security Review Capture flow: after any security review (`/secu
 - **Detect:** in each route's input mapping, ask "what bounds the size of this string?"
 
 ### Secrets & Configuration
+
+### DB TLS encrypted-but-unverified on managed platform Postgres (accepted, mitigated)
+- **Found in:** roadmap-builder.4 (Roadmapper) — `app/src/lib/store/postgres.ts`, `app/db/migrate.js` (2026-08-15)
+- **Severity:** medium (accepted risk with upgrade path)
+- **Vulnerability:** `pg` pools connect to the PLN-provisioned RDS with `ssl: { rejectUnauthorized: false }` — encrypted but not certificate-verified, so an on-path attacker inside the platform network could in principle MITM the DB connection.
+- **Fix:** partially accepted: the setting is the PLN kit's documented contract (no CA bundle is distributed to apps; strict verify risks failing the first-boot migration). Mitigation shipped: `PGSSLROOTCERT` env var enables strict verification (`ca` + rejectUnauthorized:true) with zero code change once PLN provides a bundle; mode is fixed at boot — no runtime downgrade path.
+- **Prevention rule:** when a platform prescribes unverified TLS, isolate the ssl config in one helper, add a CA-bundle env escape hatch immediately, and record the accepted risk — don't scatter `rejectUnauthorized: false` across call sites.
+- **Detect:** grep `rejectUnauthorized` — every hit must be one shared helper with a documented CA override.
 
 ### Live service-role key inside the deploy-zip root
 - **Found in:** roadmap-builder.4 — `app/.env.local` (Supabase service_role JWT) (2026-07-23)

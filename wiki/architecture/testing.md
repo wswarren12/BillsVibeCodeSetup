@@ -128,6 +128,21 @@ test("user can complete checkout with valid card", async ({ page }) => {
 
 ## Gotchas
 
+### Keep the browser open when testing custom Next server shutdown
+
+- **Symptom:** Ctrl+C hung with a workspace tab open, preventing PostgreSQL shutdown and lock release. The earlier browser test closed Chromium first and masked the fault (Terminally Product, 2026-09-10).
+- **Cause:** Node's `closeAllConnections()` excludes upgraded sockets. Next's HMR WebSocket kept `server.close()` pending, while Next cleanup was scheduled after that wait.
+- **Fix:** track owned upgrade sockets, stop accepting connections, destroy those sockets, then drain request-owned checkpoints before Next/SQL/PG cleanup. Do not replace checkpoint draining with forced database termination.
+- **Regression/prevention:** establish and receive a real HMR frame, pause provider work using SDK transport mocks, keep Chromium open, trigger shutdown, release work, and require bounded closure. Check socket closure, PID/lock release and saved checkpoint/export recovery in a freshly started database composition. The pre-fix test failed specifically with `tab-open shutdown exceeded 10 seconds`; the repaired version passed.
+
+### Calendar-rot: "today is in range" e2e seeds with hard-coded dates (2026-08)
+
+- **Symptom:** a today-line/date-window test that passed for weeks fails suddenly with no related code change (here: item seeded to end 2026-08-15; the wall clock crossed it over a weekend).
+- **Root cause:** assertions about "today" against fixed seeded dates — the test encodes the authoring date's calendar.
+- **Resolution:** seed relative to the real clock (item spans today ±14d inside a months-around-now range).
+- **Prevention rule:** any test whose assertion depends on the current date must derive its fixtures from `new Date()` (or freeze the clock). Grep e2e seeds for literal dates near assertions mentioning today/now.
+
+
 ### Playwright `reuseExistingServer` silently tests a stale build (2026-07)
 
 - **Symptom:** an E2E suite that passed keeps failing after a code fix — or fails in ways matching *already-fixed* bugs; the run seems slow/hung; failures make no sense against current source.
@@ -135,6 +150,8 @@ test("user can complete checkout with valid card", async ({ page }) => {
 - **Resolution:** kill the stale process (`lsof -iTCP:<port> -sTCP:LISTEN`), rerun — suite went from broadly failing to fully green.
 - **Prevention rule:** when using `reuseExistingServer: true` locally, verify what owns the port before every debugging-session rerun, and always kill ad-hoc servers you start on the test port (start probes on a *different* port). If E2E failures contradict a fix you just made and verified, suspect the server build before the code.
 - **Variant (2026-07):** the stale artifact can be the *build*, not the server. `git stash` → `npm run build` (to baseline-test) → `git stash pop` leaves `.next` compiled from the stashed tree; the next `playwright test` starts a *fresh* server that serves the old build, so new tests fail on missing testids. After any stash/checkout dance that touched source, rebuild before rerunning E2E — the failure signature is "exactly the tests exercising new UI fail; API/unit tests pass".
+- **Variant (2026-08):** running `next build` while `next dev` or a Playwright-managed `next start` is live rewrites the shared `.next` directory underneath the server. The page may return 200 with unstyled raw HTML (`next dev`) or `Internal Server Error` while locators time out (`next start`) because the server's chunk cache no longer matches disk. Never run builds and E2E against the same checkout concurrently; restart the server after any production build.
+- **Generated-type variant (NewsBreef, 2026-09-11):** an isolated source-hash check differed only in `next-env.d.ts` after dev changed `.next/types/routes.d.ts` to `.next/dev/types/routes.d.ts`. Stop the owned server, run native type generation, then rerun the normal source verifier; all 182 inventoried files matched. Do not silently ignore the mismatch or weaken the verifier. Keep build and dev sequential and preserve the original failure evidence.
 
 ### Vitest run from the wrong cwd: "Cannot find package '@/…'" looks like broken aliases (2026-08)
 
@@ -157,6 +174,61 @@ test("user can complete checkout with valid card", async ({ page }) => {
 - **Resolution:** close the overlay first (`Escape` + `await expect(drawerBody).toBeHidden()`), then interact with the background element by role.
 - **Prevention rule:** in E2E flows, never target background page chrome with `getByRole` while a modal overlay is open — close it first. Diagnostic tell: `getByRole` count 0 but `[aria-label=...]`/testid count 1 → an ancestor is `aria-hidden`, not a missing element. Such a test can look "passing" historically and then break; treat it as broken by design.
 
+### Evidence navigation needs destinations, focus and overflow checks (Terminally Product, 2026-09-09)
+- **Symptom:** valid clarification/risk evidence links had no DOM destination; opening evidence also produced a large blank document tail in full-page captures.
+- **Root cause:** the renderer linked every supported evidence ID but only claim/source targets existed. Imported PL external-link `sr-only` labels were absolutely positioned without a positioned transcript ancestor, escaping the clipped scroll region.
+- **Resolution:** add targets to existing clarification/risk views, open disclosures and transfer focus on activation; position the transcript to contain absolute descendants without deleting accessible labels or editing vendored controls.
+- **Prevention rule:** keyboard-activate every distinct internal evidence link and assert one visible focused destination. After opening disclosures, assert document scroll height stays inside body layout, not merely horizontal overflow or screenshot file existence.
+
+### Fullscreen transcript follow-bottom must survive viewport changes (Terminally Product, 2026-09-11)
+- **Symptom:** an active stream was present in the DOM but a desktop/mobile capture showed only its opening line or unrelated scrollback.
+- **Root cause:** passive post-render scroll updates missed dock/viewport resize, and native scroll anchoring changed the follow-bottom state as the layout settled. A `toContainText` assertion proved text existed, not that it could be read.
+- **Resolution:** update following in layout timing, observe scroll-area resize and disable native overflow anchoring, while preserving the reader's explicit non-bottom position. Temporary inspection stores/restores exact scrollTop and returns focus; the background is inert under the existing overlay.
+- **Prevention rule:** hold a genuine transport stream after readable text but before terminal completion. Assert distance from bottom before/after viewport resize, manually scroll back, open/close inspection and assert exact position/focus. Include keyboard-sized mobile viewport and no overflow; distinguish that from a physical software-keyboard test. Inspect every bounded screenshot, not just file existence.
+
+### React direction comments need emitted-production checks (Terminally Product, 2026-09-11)
+- **Symptom:** a production smoke assertion requiring an inert direction template immediately after body failed despite the comment and seed surviving.
+- **Root cause:** Next 16 inserted its hidden suspense marker before the first authored body child; JSX itself cannot emit an HTML comment node directly.
+- **Resolution:** with explicit approval, use a compile-time constant HTML comment inside the first authored inert template, and permit only the exact observed optional framework marker plus whitespace before it. Verify every contract block, seed and word bound against genuine production HTML.
+- **Prevention rule:** inspect framework output before inventing response rewriting or hydration workarounds for inert metadata. Never broadly skip arbitrary preceding elements or interpolate user/env/model data into the comment. Record the narrow approved equivalence.
+
+### Awaiting refresh does not replace React's captured state or authorize further work (Terminally Product, 2026-09-09; refined 2026-09-11)
+- **Symptom:** `/status` showed an old revision after the header refreshed to a newer HTTP/MCP checkpoint.
+- **Root cause:** the command awaited a state setter flow then formatted its notice from the previous render's closure.
+- **Resolution:** return the fetched status from refresh and format the notice from that response. For user-authorized automatic progression, await each bounded operation and use its authoritative final status/revision, never a captured render, current stage label or effect rerun. Count saved validated milestones/panel checkpoints for native progress; leave current work indeterminate and label reframe resets.
+- **Prevention rule:** test refresh commands by advancing through a second transport while the browser remains stale; awaiting a function that sets React state does not update its caller's captured variables. Exercise actual HTTP+SQL+SDK transport mocks in Chromium: exactly one explicit adaptive start before input, partial questions, Pause between operations, no hidden failure retry, cross-tab duplicate refusal, conflict/disconnect/unmount, and no spending on load/select/visibility. A stage label indicates location, not validated completion or permission to call another model.
+- **Draft identity variant (2026-09-11):** an unscoped composer carried review A's unsent answer into review B's different question, where Enter could save it using B's current revision and trigger automatic work. Bind drafts to session ID and exact active question (plus answer/override mode), resetting before committing a changed target rather than relying on every navigation caller to clear text. Browser regression: type without submitting, refresh the same question (retain), switch reviews (clear), and refresh after a second transport advances the question (clear); pressing Enter then sends zero action requests and leaves SQL state unchanged. Revisions prevent stale writes, not reassociation of a draft with a different current target.
+
+- **Mutation/refresh variant (NewsBreef, 2026-09-11):** a successful free-activation POST followed by a failed subscription GET left stale delivery/editor state under a success message. Return an explicit refresh outcome, distinguish confirmed mutation from unavailable refreshed state, hide stale editing/active summaries, and offer GET-only retry. Synthetic browser regression requires failed then successful refresh retries, restored confirmed selections, and exactly one activation POST; matching desktop/mobile recovery captures were independently accepted. A successful write is not proof that reconciliation succeeded; do not repeat the write to recover a failed read.
+
+### Same-URL navigation still replaces the document (NewsBreef, 2026-09-11)
+
+- **Symptom:** `page.evaluate: Execution context was destroyed, most likely because of a navigation` in a health assertion after the second synthetic billing-portal click.
+- **Root cause:** the fixture returned the current billing URL; waiting for the POST response alone raced the ensuing same-URL document navigation.
+- **Resolution:** arm the navigation wait before the click, await both navigation and the response, then wait for the new document's billing control before checking health. The final nine browser groups passed after this supervisor-authorized harness-only correction.
+- **Prevention rule:** a matching current URL or completed API response is not a document-ready signal. Await the action's actual navigation lifecycle; do not add sleeps or swallow evaluation errors. If the task requires stop/report on tooling failure, get authorization before fixing the harness.
+
+### Passing branch assertions are not visual proof of that branch (NewsBreef, 2026-09-11)
+
+- **Symptom:** visual re-review could not score canceled-account billing access or activation-refresh recovery although browser assertions passed; the seven required screenshots showed only ordinary states.
+- **Root cause:** the capture batch did not render the two repaired edge branches.
+- **Resolution:** retain and recapture the seven required images, adding desktop/mobile no-paid-tier home, billing, and activation-refresh states in the same synthetic batch. Open all thirteen; record dimensions, hashes, and fixture provenance. Independent visual re-review accepted those two fixes, without broadening its verdict to live providers or the entire surface.
+- **Prevention rule:** map each scored visual finding to evidence that visibly exercises it; do not substitute unrelated happy-path captures or claim screenshot existence alone as acceptance. Label local provider fixtures as local, not external-provider screenshots.
+
+### Host spoof tests must verify bytes sent by the HTTP client (Terminally Product, 2026-09-10)
+
+- **Symptom:** a Node fetch test reported HTTP 200 for a forged Host even though the actual loopback listener correctly compared `req.headers.host` with its bound address.
+- **Root cause:** the installed fetch/Undici path did not send the requested Host override; the test exercised the valid default Host, not the attack.
+- **Resolution:** use native `node:http.request` for raw Host tests; keep browser/fetch tests for Origin/JSON/forwarded-header cases. The native forged-Host request is refused before any SDK message call.
+- **Prevention rule:** a request-header object is not evidence of transmitted bytes. When testing transport security, use a client that permits the target header and check the real listener, not only an in-memory Request adapter. Use fake payloads and zero provider network calls.
+
+### Keep a public live evaluation separate from confidential incidental reads (2026-09-14)
+
+- **Symptom:** Terminally Product's eval-only browser guard stopped after creating a public test review because routine refresh also fetched the entire unrelated private learning inbox. No private body was read and no model call had started.
+- **Root cause:** one shared refresh coupled review progression to a separate confidential inspection surface.
+- **Resolution:** load candidates on explicit Help/private-learning inspection, not selection/start/answer/status refresh. Preserve extraction/review refreshes and keyboard focus; opening the overlay synchronously avoids losing the trigger while awaiting data. The synthetic browser regression first observed one forbidden incidental request, then zero after the fix; deliberate Help still loads once and existing learning actions pass.
+- **Prevention:** freeze preexisting metadata exclusions before a paid eval, restrict all content reads/mutations to journal-created eval IDs, keep live runners opt-in/out of CI, and never mock an incidental live response to conceal private access. Authorized metadata counts or server-side hashes are different from inspecting original bodies. Journal exact requests, source commits, failures and explicit retries; deduplicate usage by provider message ID and flag missing-ID costs as unknown. Thin public comment highlights and votes are heldout descriptive signals, not proof of business quality.
+
 ## The One Rule
 
 If you're unsure whether to write a test, ask:
@@ -175,3 +247,9 @@ If you're unsure whether to write a test, ask:
 ## Sources
 
 - [[raw/articles/vibes-knowledge-base/09-testing-philosophy]]
+
+
+### Evaluator transport failure is not a durable workflow gate (2026-09-14)
+A public-case browser evaluator resubmitted108 Continue requests after an SSE error left saved revision57 ready. The application rejected before provider I/O at its unchanged state cap; no additional retained message IDs/tokens appeared. Fix the runner, not the budget: sticky HTTP/SSE error, visible UI error and non-advancing-revision guards before another mutation. Preserve every rejected request. An actual CLI/no-model HTTP regression reproduced a second request before the guard and exactly one after; exercise unavailable Playwright SSE bodies with independent UI/revision checks. A browser body's retrieval failure is not proof that the application disconnected. Reconcile failed checkpoints separately from accepted pipeline usage; no-ID timeout cost stays unknown.
+
+The same pass exposed a separate authorization bug: retry permission survived an initially ready state and was spent on a new failure, producing one unauthorized additional paid repair. Consume permission at the initial snapshot whether or not it is failed; HTTP and browser share the tested policy. The red ready→failure sequence granted a retry, green denies it. All spending then stopped pending independent source/test confirmation and explicit new approval. Do not normalize this protocol deviation as an ordinary retry.

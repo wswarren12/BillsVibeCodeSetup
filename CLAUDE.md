@@ -37,6 +37,9 @@ Everything dockerized.
 ### Database
 Neon Postgres + Drizzle (always)
 
+### Design inspiration (any UI/site work)
+Before writing UI or invoking the `impeccable` skill, read `wiki/patterns/design-references.md` and pull 2–3 entries matching the surface's mode (Persuade / Operate / Read / Experience). Paste their **Steal** lines into the project's `.impeccable/DESIGN.md` under a References heading. Never paste the whole file. If nothing matches, say so rather than inventing a direction.
+
 ### Styling
 - **Web** → Tailwind + shadcn/ui
 - **Mobile** → NativeWind

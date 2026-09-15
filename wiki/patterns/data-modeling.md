@@ -150,6 +150,22 @@ Use `GEOGRAPHY` (spherical, meters) not `GEOMETRY` (planar, degrees) unless you'
 
 Even for an MVP, use migrations. Apply schema changes via `supabase migration new` and SQL files, not by clicking around in the dashboard. This makes the schema reproducible, reviewable, and version-controlled. The dashboard is for exploration; migrations are for truth.
 
+## Gotchas
+
+### Exact NUMERIC storage does not imply valid financial values
+
+- **Symptom:** PostgreSQL `NUMERIC(p,s)` can store NaN, and `CHECK(amount >= 0)` does not reject it. Typmod assignment can also silently round excess fractional digits before a column CHECK sees the value.
+- **Root cause:** PostgreSQL orders numeric NaN above ordinary values, and typmod coercion precedes stored-row checks.
+- **Resolution:** PLAA Schemas checks untyped numeric API inputs for finiteness, scale and precision before assignment, plus explicit stored-column NaN rejection. `tests/test_schema.py` tests both runtime APIs and the base NaN constraint.
+- **Prevention rule:** validate exactness before typed casts at the restricted write boundary; do not rely only on nonnegative checks or checks against already-rounded columns.
+
+### Empty child sets bypass row-level validation of required batch metadata
+
+- **Symptom:** a zero-distribution settlement could omit economic time even though every nonzero issuance required a finite `effective_at`.
+- **Root cause:** validation lived only on child ledger rows, and a legitimate empty issuance array created no rows to validate.
+- **Resolution:** PLAA Schemas `007_input_hardening.sql` validates finite economic time/input cutoff on the settlement batch using its immutable source manifest; tests cover missing/infinite time on zero results.
+- **Prevention rule:** validate required batch metadata at the parent boundary independently of child count; test empty sets as successful business cases and as malformed input.
+
 ## Related
 
 - [[architecture/database]]

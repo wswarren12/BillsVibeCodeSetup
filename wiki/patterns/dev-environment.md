@@ -23,6 +23,13 @@ Gotchas and rules for the local toolchain itself — node/npm, version managers,
 - **Root cause / resolution:** npm majors pin minimum Node *patch* versions, and `nvm install 22 --latest-npm` only bumps npm conservatively. Fix: `nvm install 22 --reinstall-packages-from=current` (migrates global CLIs), `nvm alias default 22`, then `npm install -g npm@latest`.
 - **Prevention rule:** read the `Required:` line of an npm `notsup` error literally — it names the exact acceptable versions; a patch-level `nvm install` is usually the whole fix. Verify globals migrated afterward with `npm ls -g --depth=0`.
 
+### Gotcha: nested macOS TMPDIR exceeds PostgreSQL's Unix socket path limit
+
+- **Symptom:** a disposable PostgreSQL test cluster fails with `Unix-domain socket path ... is too long (maximum 103 bytes)` when launched through a sandboxed tool, although the same runner works directly.
+- **Root cause:** macOS already supplies a long `/var/folders/.../T/` path; a tool adds another temporary directory, then the runner adds its cluster/socket directories and PostgreSQL's socket filename.
+- **Resolution:** PLAA Schemas `scripts/test.py` creates its unpredictable mode-0700 disposable directory directly under `/tmp`, keeps TCP listening disabled and cleans up only its own cluster. Native PostgreSQL 16.10 suite then passes.
+- **Prevention rule:** keep Unix socket paths short independently of inherited TMPDIR; use private random directories, not a shared fixed socket path. Test the actual agent/sandbox launch environment.
+
 ## Related
 
 - [[patterns/agent-automation]] — agent-session mechanics, including running sudo from a TTY-less agent shell

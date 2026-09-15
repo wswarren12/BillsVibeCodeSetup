@@ -1,3 +1,8 @@
-claude-config/settings.json filter=anonpath
-commands/process-tips.md filter=anonpath
-commands/tip.md filter=anonpath
+*.md filter=anonpath
+*.json filter=anonpath
+*.sh filter=anonpath
+*.ts filter=anonpath
+*.js filter=anonpath
+*.yml filter=anonpath
+*.yaml filter=anonpath
+*.toml filter=anonpath
