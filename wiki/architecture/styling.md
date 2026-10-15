@@ -18,5 +18,13 @@
 - No styled-components / Emotion — runtime CSS-in-JS is dead (performance cost, SSR pain)
 - No MUI / Chakra — heavy bundles, opinionated styling you'll fight against, hard to customize
 
+## Gotchas in existing codebases
+
+### styled-jsx selectors can miss DOM rendered through Next Link
+- **Symptom:** PLAA footer links inherited dark body text despite a teal `.pf__link` rule (2026-09-30).
+- **Cause:** styled-jsx emitted `.pf__link.jsx-…`, but mapped Next `Link` elements rendered with only `class="pf__link"`. The scoped footer parent retained its generated class.
+- **Resolution:** use `.pf :global(.pf__link)` and `.pf :global(.pf__link:hover)` to scope through the native parent instead. Desktop/mobile computed-style checks verified the requested color.
+- **Prevention:** in existing styled-jsx code, inspect emitted selectors and DOM classes across component boundaries; verify computed color rather than trusting the source declaration. Keep global child selectors anchored to a scoped parent.
+
 ## Sources
 [To be populated via ingest]

@@ -137,6 +137,7 @@ Mandatory around every security review (`/security-review`, `/code-review` with 
 - **Playwright e2e is the primary testing strategy.** Write e2e tests first.
 - **BDD scenarios come before implementation.** Given/When/Then specs define acceptance criteria before code is written.
 - **Unit tests only for pure logic.** Use unit tests for utility functions, transformers, and business logic that has no side effects. Do not unit-test UI components or integration points.
+- **Any AI element gets evals.** If the app produces model output or holds a conversation, local/manual testing captures every output and turn to an `evals/` folder, graded Pass/Fail with a short `Why`. See `wiki/patterns/ai-output-evals.md`. Tests assert shape; evals are the only thing that catches a confident wrong answer.
 
 ## Operations
 
@@ -163,3 +164,4 @@ Each ADR should include: title, date, status, context, decision, consequences.
 2. **Always update `index.md`** — any wiki change must be reflected in the index.
 3. **Always append to `log.md`** — every significant action (ingest, decision, refactor) gets a timestamped log entry.
 4. **Check architecture and decisions before proposing patterns** — search `wiki/decisions/` and `wiki/architecture/` before introducing new patterns or tools. Reuse what exists.
+5. **AI output is captured and graded, never judged from memory** — any project with a model that generates text or converses writes local test output to an `evals/` folder with an `eval.md` explainer; each item carries `Pass`/`Fail` + `Why`, defaulting to `Unrated`. The folder is gitignored, `0700`/`0600`, and never served. Skipping this needs an ADR; applying it does not. See `wiki/patterns/ai-output-evals.md`.

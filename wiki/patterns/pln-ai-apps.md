@@ -15,9 +15,96 @@ migration Roadmapper V2 (`~/Desktop/RoadmapperV2`, 2026-08-12).
 Next.js 14 in `app/`, `$PORT` on `0.0.0.0`, `GET /health` → 200,
 iframe-embeddable from `*.plnetwork.io` (no `X-Frame-Options`; CSP
 `frame-ancestors 'self' https://plnetwork.io https://*.plnetwork.io`), secrets
-via the LabOS draft flow, deploy via the `deploy-to-labs` skill.
+via the LabOS draft flow, deploy via the `deploy-to-labs` skill — or, for
+repeat deploys, directly with a LabOS deployment key (next section).
+
+## Direct deploy with a LabOS deployment key (verified PLaybook, 2026-10-06)
+
+A **deployment key** replaces the connect flow for repeat deploys. The app
+owner generates it in LabOS → AI Apps → the app's ⋯ menu →
+**Deployment settings**. It is long-lived (valid until revoked there), and
+scoped to **one app and one environment** (`prod` or `preview`). Send it as
+`x-app-token`, exactly like a connect-flow token.
+
+**Verified: a direct `deployEndpoint` upload works for an app that already has
+stored runtime secrets and a provisioned database.** No draft, no click in
+LabOS. The 202 response's `providedEnvVars` confirmed the stored values were
+attached, and the build went `DEPLOYING → READY` in under a minute. The
+kit documents keys and the secrets flow separately, never together, so this
+was an open question. Use the draft flow only when secret **names** change or
+values still need entering; a draft does nothing until someone clicks Deploy.
+
+### Steps
+
+1. **Pull the branch you deploy, and confirm the working tree is clean.** If
+   others push to `main`, the tip may contain code you haven't tested.
+2. **Read-only preflight.** `GET statusEndpoint` with `latest` as the
+   `{deploymentId}`. A 200 proves the key is accepted and shows its
+   `environment` and the current status, without changing anything.
+3. **Gate.** In `app/`, run `npm install`, `typecheck`, `test` and `build`.
+   Don't deploy on any failure. Add the browser E2E run when UI changed; it
+   is the only check on what users see, and these repos often have no CI.
+4. **Zip the contents of `app/` by the `.dockerignore` exclusion list.** Don't
+   hand-pick an allowlist, which silently drops new folders. Then scan inside
+   the ZIP for the actual **values** of every local secret, not just
+   secret-looking filenames (see the `local.env` gotcha below).
+5. **Upload** (command below), then **poll** the returned `statusEndpoint`
+   every `pollIntervalSec` until `READY` or `ERROR`. On `ERROR`, read
+   `failureStream` and fetch build or runtime logs.
+6. **Verify past `READY`.** `READY` only means the container started. Fetch
+   runtime logs filtered with `?deploymentId=<id>` and confirm the migrate
+   line, the listening line, and zero error-level lines. `0 applied, N
+   already current` means an earlier deploy already ran the migration.
+
+```bash
+# Key referenced only by name; its value never appears in output or files.
+export DEPLOY_KEY="$(grep -E '^LAB_OS_DEPLOYMENT_KEY=' app/local.env | cut -d= -f2-)"
+curl -sX POST "$(jq -r .deployEndpoint pln-app.config.json)" \
+  -H "x-app-token: $DEPLOY_KEY" \
+  -F "appId=<appId>" -F "name=<appName>" -F "description=<appDescription>" \
+  -F 'tags=<appTags as JSON array>' \
+  -F "deploymentId=$(date -u +%Y%m%d%H%M%S)" -F "kitVersion=<kitVersion>" \
+  -F 'database={"enabled":true,"type":"postgres"}' \
+  -F "file=@app.zip;type=application/zip"
+# → 202 { status: "DEPLOYING", statusEndpoint, pollIntervalSec, providedEnvVars, … }
+```
+
+### Rules
+
+- **Metadata verbatim** from `pln-app.config.json` (`appId`, `appName`,
+  `appDescription`, `appTags`, `kitVersion`). The deploy overwrites stored
+  name/description, so never re-run the approval flow on a redeploy.
+- **Omit `access`**: sending it overwrites who can open the app.
+- **Omit `environment` for a prod key.** A prod key rejects
+  `environment=preview`, and vice versa.
+- **Send `database` on every deploy** once the app has a provisioned database.
+- **Never print the key, and never write it into the app tree.** If it lives
+  in `app/local.env` for convenience, that file must be excluded from the
+  ZIP: the kit's documented zip excludes (`.env`, `.env.*`) do **not** match
+  `local.env`. Prefer a shell-only variable.
+- **Scrub responses recursively before printing.** The deploy response nests
+  the app's private URL/host under `deployments.prod.*`. A top-level-only
+  filter leaked it once, so withhold any `url|host|port` key at every depth,
+  keeping only `appPageUrl` and `statusEndpoint`.
+- Project runbook: PLaybook's `docs/deploying.md` in `protocol/playbook`.
 
 ## Gotchas
+
+### Clipboard denial must not become a silent no-op (PLaybook, 2026-10)
+
+- **Symptom:** a skill's Copy button did nothing when `navigator.clipboard.writeText`
+  rejected; its catch block swallowed the error. Missing Clipboard API support
+  had the same result. The shared component also served prompt copying.
+- **Root cause:** relying solely on the async Clipboard API ignores secure-context,
+  permission and embedding-policy restrictions; success-only UI hid the failure.
+- **Resolution:** keep the native API first, then try a temporary selected textarea
+  with `execCommand('copy')` inside the active modal's focus boundary. Remove it
+  and restore focus. Show Copied only on success; if both methods fail, show
+  manual-copy instructions. A failing browser reproduction now passes and reads
+  the actual clipboard text, including Unicode and newlines.
+- **Prevention rule:** test normal, rejected and unavailable Clipboard API paths,
+  plus total denial. Verify clipboard contents, not merely the Copied label.
+  A fallback cannot override browser/OS policy; retain an honest manual recovery.
 
 ### Member context has NO email — challenge email-based specs at design time (v1.4)
 

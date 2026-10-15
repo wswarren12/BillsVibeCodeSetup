@@ -31,6 +31,22 @@ Populated by the Security Review Capture flow: after any security review (`/secu
 
 ## Findings by category
 
+### Development static server exposes private repository files
+- **Found in:** PLAA Activity Bot — `dev/local-server.mjs`, manual production UI setup (2026-09-25).
+- **Severity:** high when reachable by untrusted clients.
+- **Vulnerability:** the fallback static handler served arbitrary files beneath the repository root, including environment files and deployment backups; its listener bound all interfaces by default. Gitignore does not restrict HTTP access.
+- **Fix:** bind the bench to `127.0.0.1` and allow only the exact public page, widget bundles and activities catalog. Backend bench checks verify private paths return 404 and public assets remain available.
+- **Prevention rule:** never expose the repository root as a static directory; explicitly allow public assets and bind credential-bearing development tools to loopback.
+- **Detect:** inspect static fallback roots and listener addresses; request private configuration paths without recording response contents. No evidence of prior exploitation was observed.
+
+### Teardown deletes the resource but leaves its credentials on disk
+- **Found in:** PLAA Activity Bot — `workflow/provision-live-test.mjs`, isolated readiness probes (2026-09-25, caught in independent review).
+- **Severity:** low-to-medium (depends on what the orphaned secret still authorizes).
+- **Vulnerability:** the provisioner writes each isolated probe/clone's endpoint URL, one-off bearer token and workflow id into a private `0600` runtime env file. `--destroy` deleted the workflows but never removed those keys, so the file kept advertising a live-looking endpoint+token trio for a resource that no longer existed. Two concrete harms: an operator (or a later script) reads a "configured" endpoint and confidently talks to a 404, and a token that was supposed to have a lifetime bounded by its workflow instead persists indefinitely on disk with nothing revoking it. The same shape applies to any provision/teardown pair — temporary API keys, tunnel URLs, scratch database URLs.
+- **Fix:** declare key ownership per resource kind in one place (`RUNTIME_KEY_NAMES`), make the prune decision a pure function (`pruneEnvEntries(entries, deadKinds)`) with unit tests, and call it from teardown after the manifest is rewritten — pruning only kinds with **no surviving resource**, and never touching keys it does not own.
+- **Prevention rule:** provisioning and teardown must be symmetric in *both* directions — whatever `create` writes (cloud resource **and** local secret material), `destroy` removes. "Delete it by hand later" in a teardown log line is an unenforced TODO, not cleanup. Treat a secret whose authorizing resource is gone as an orphan to be deleted, not as harmless.
+- **Detect:** after any teardown, diff the private runtime/env file against the resource manifest; every key must map to a resource that still exists. A `--status` listing that is empty while the env file is full is the signature.
+
 ### Authentication & Session
 
 ### Dev-auth bypass not guarded by NODE_ENV
@@ -49,7 +65,31 @@ Populated by the Security Review Capture flow: after any security review (`/secu
 - **Prevention rule:** every server-side cache keyed by client-supplied values needs a size bound or eviction sweep, not just per-entry TTL.
 - **Detect:** search for `new Map()` caches keyed on tokens/headers; ask "what removes entries?"
 
+### Per-turn identity resolution with no session binding
+- **Found in:** PLAA Activity Submission Bot — `workflow/lib/identity-verification.mjs` (`resolveTurnIdentity`) (2026-09-24), caught in review **before** wiring
+- **Severity:** medium (would have been high once wired)
+- **Vulnerability:** a pure `verify(introspectionResponse) → identity` helper is safe in isolation and unsafe as a per-turn call in a multi-turn conversation. Nothing pinned the verified uid to the session, so turn *n* could verify as member A and turn *n+1* as member B while a single half-built draft accumulated — the submitted record would carry whichever identity happened to verify last. A verified email could likewise silently replace an address the member had already typed for the draft in flight.
+- **Fix:** `resolveTurnIdentity` now returns `pinMemberUid` (persist on first verification, pass back as `sessionMemberUid` every later turn); a different verified uid returns `abort: true` rather than overwriting, and a `collectedEmail` always wins over a verified one for the draft in flight.
+- **Prevention rule:** identity verification in a stateful conversation is two controls, not one — *verify the credential* **and** *bind the result to the session on first success, aborting on mismatch*. Add the binding before the verifier is wired; retrofitting it after means auditing every draft written in between.
+- **Detect:** for any `verify…(claims) → identity` helper, ask "what happens if this returns a **different** subject on turn 2?" If the answer is "it overwrites", the binding is missing. Test it explicitly: same uid twice → ok; changed uid → abort, not overwrite.
+
+### Identity-by-claim presented as verified identity (documentation risk)
+- **Found in:** PLAA Activity Submission Bot — `docs/RUNBOOK.md` §7 / `workflow/lib/airtable.mjs buildParticipantFields` (2026-09-24)
+- **Severity:** low (documentation/threat-model accuracy; behavior unchanged)
+- **Vulnerability:** the runbook described `member_uid` as reaching production rows "the safe way — server-side from an EXACT AAID Registry email match". The lookup is server-side, but its key is the email the member typed in chat. A member who knows a colleague's address gets that colleague's `member_uid` written to the row. Carrying that sentence into a pattern library would launder identity-by-claim into "verified identity" for the next project that copies it.
+- **Fix:** reworded to "server-side derived, but from a self-asserted email — this is not authentication", with the consequence spelled out.
+- **Prevention rule:** when documenting an identity mechanism, name the *trust source of the key*, not just where the lookup runs. "Server-side lookup" is not a synonym for "verified".
+- **Detect:** for every identity field written to storage, trace the key back to its origin; if any hop is user-typed text, the field is a claim.
+
 ### Authorization & Access Control (IDOR, RLS gaps)
+
+### Soft-deleted content leaks through secondary download routes
+- **Found in:** PLaybook — `app/routes/skills.js`, legacy POST `/:id/download` and skill PATCH (2026-10-06).
+- **Severity:** medium.
+- **Vulnerability:** normal reads excluded `removed_at` rows, but the counter/download endpoint updated any matching ID and returned its install snippet. A signed-in member with the ID could recover removed content after a takedown; the edit route also accepted removed skills.
+- **Fix:** filter removed rows in legacy download/edit routes, enforce the same parent visibility for new original-ZIP downloads, and lock/recheck the parent before archive replacement. API tests assert removed snippets/archives return 404 and removed skills cannot be updated.
+- **Prevention rule:** carry removal/visibility rules into every data-bearing secondary route (downloads, exports, counters returning content), not only lists and detail views. Recheck state at writes and avoid caching private downloads.
+- **Detect:** trace every route that returns original content or a file for a soft-deletable row; test those routes after marking that row removed, using a still-valid signed-in caller.
 
 ### Sync/mirror propagation as a write channel — link creation under-authorized
 - **Found in:** roadmap-builder.4 (Roadmapper) — `app/src/lib/sync.ts` + `POST /api/roadmaps/[id]/items/import` (2026-08-14)
@@ -105,7 +145,13 @@ Populated by the Security Review Capture flow: after any security review (`/secu
 
 ### Client-Side Exposure
 
-<!-- No findings recorded yet. -->
+### Public projections built from unverified workflow artifacts
+- **Found in:** NewsBreef — `web/lib/ai-archive.ts`, `web/workflows/steps/send-emails.ts`, AI archive publication path (2026-09-18, found and fixed before deployment).
+- **Severity:** high (two P1 release blockers; no observed production exposure).
+- **Vulnerability:** public readers could receive an unsent draft because resolved Resend `{data:null,error}` results incremented the success count. Separately, list titles/excerpts could disclose an earlier unsent same-day attempt because the dedup ledger's execution ID was shared across attempts. Sanitizing HTML and requiring positive database counters did not establish publication provenance.
+- **Fix:** require provider acknowledgement with an ID and no SDK error; publish into a new confirmed-only KV namespace and never fall back to legacy pre-send copies. Extract headline/excerpt during sanitization of that exact published snapshot. API/account errors do not mark recipients bounced. The archive fills prospectively; acknowledgement is not inbox-delivery certification.
+- **Prevention rule:** public projections must inherit the displayed snapshot's publication boundary. A cache entry, resolved SDK promise, or shared date/run label is not proof of successful publication. Separate UI-quality scores from security/data-safety acceptance.
+- **Detect:** inspect actual SDK error return shapes, seed an earlier unsent attempt before a later acknowledged copy, and verify legacy cache exclusion. Regressions cover returned errors, missing IDs, mixed results, invalid API keys without recipient mutation and exact-copy metadata. Same-reviewer recheck: all original blockers resolved, OK with notes; source/test review, not live-provider certification.
 
 ### API & Webhook Hardening
 

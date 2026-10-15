@@ -128,6 +128,20 @@ test("user can complete checkout with valid card", async ({ page }) => {
 
 ## Gotchas
 
+### Next lockfile auto-patching can make an unexpected registry request (NewsBreef, 2026-09-18)
+
+- **Symptom:** an otherwise successful isolated Next build attempted a blocked registry request while patching missing SWC lockfile entries after adding a dependency.
+- **Cause:** npm removed the baseline top-level non-host SWC package records; equivalent nested records still existed, but Next's patch check requested the top-level entries. This was not an observed Linux deployment failure.
+- **Resolution:** restore the seven removed optional compiler records exactly from HEAD, without changing versions or opening the network guard. Validate all eight top-level SWC records against the baseline, rebuild and rerun browser checks; the patch/registry diagnostic disappears.
+- **Prevention:** inspect package identity/version changes, not just lockfile line counts. Do not dismiss blocked build-time network traffic as harmless before identifying its caller, or manufacture package integrity values.
+
+### Safety preloads require the intended runtime, not a Node-compatible version string (NewsBreef, 2026-09-18)
+
+- **Symptom:** an isolated archive test unexpectedly contacted Cloudflare and received 404 despite a `NODE_OPTIONS` network guard. Only synthetic IDs/token were present; no real credential or successful provider operation was involved.
+- **Cause:** a Bun subprocess ignored the Node preload boundary; using a tool host's `process.execPath` inherited that runtime rather than launching actual Node.
+- **Resolution:** reject Bun explicitly and spawn the verified `node` executable; block non-loopback sockets and restrict archive browser requests to same-origin GETs. Require the owned listener PID and a fresh, fully consumed readiness response before browser navigation.
+- **Prevention:** test the guard itself under the actual child runtime. A Node-like version string, synthetic credentials, or a successful health status alone does not prove network isolation. Keep the failed-attempt record; only claim zero external contact for the corrected guarded runs.
+
 ### Keep the browser open when testing custom Next server shutdown
 
 - **Symptom:** Ctrl+C hung with a workspace tab open, preventing PostgreSQL shutdown and lock release. The earlier browser test closed Chromium first and masked the fault (Terminally Product, 2026-09-10).
@@ -221,6 +235,22 @@ test("user can complete checkout with valid card", async ({ page }) => {
 - **Root cause:** the installed fetch/Undici path did not send the requested Host override; the test exercised the valid default Host, not the attack.
 - **Resolution:** use native `node:http.request` for raw Host tests; keep browser/fetch tests for Origin/JSON/forwarded-header cases. The native forged-Host request is refused before any SDK message call.
 - **Prevention rule:** a request-header object is not evidence of transmitted bytes. When testing transport security, use a client that permits the target header and check the real listener, not only an in-memory Request adapter. Use fake payloads and zero provider network calls.
+- **Also seen (PLAA Activity Bot, 2026-09-25):** Node's `fetch` *rejects* a `Host` override outright (the probe threw "fetch failed", which an `assert(status === 403)` helper reported as a generic failure and aborted the remaining checks). Same resolution — `node:http.request` for the rebinding probe, `fetch` for Origin/token/size probes — plus: a guard-probe helper must distinguish "refused" from "never sent".
+
+### A spawned real server writes real files — redirect its side effects per test run (PLAA Activity Bot, 2026-09-25)
+
+- **Symptom:** the moment a dev server gained an append-only transcript file (`evals.md`, human-edited ratings inside), every suite that spawns that server for e2e/bench checks would have appended dozens of synthetic interactions into the operator's real data file.
+- **Root cause:** tests reuse the real process for fidelity, and "real process" includes its real output paths. Fixtures were isolated; *side-effect files* were not.
+- **Resolution:** the file path is an env var (`PLAA_EVAL_FILE`), every spawn site passes a `mkdtemp` path (or `PLAA_EVAL_LOG=0` where capture is irrelevant), and the suite asserts the real file is byte-identical before/after a full run.
+- **Prevention rule:** when adding any persistent write to a tool that tests spawn, make its destination an env var in the same commit, point every existing spawn site at a temp path, and verify the production-path file is unchanged after the suite — do not rely on the test happening to use a different directory.
+- **Second variant, same root (PLAA, 2026-09-25, independent review F1):** spawning with `{ ...process.env, PORT }` also inherits *credentials*. Once the dev server gained a "if `PLAA_WEBHOOK_URL`/`PLAA_CLIENT_TOKEN` are set, forward upstream" mode, running the suite from a live-credentialed shell (`node --env-file=.env.cloud.local …`) made test turns hit the production webhook — measured as 7 forwarded requests against a stand-in upstream. **Rule:** a spawned test server must *clear* every env var that could switch it into a production-talking mode, and the suite must assert the mode it believes it is in (here: `/base` returns the mock viewer, not a redirect to the real base) before driving any traffic.
+
+### Wait for the appended interaction, not just the transcript file (PLAA, 2026-09-30)
+
+- **Symptom:** the eval-restart Playwright check failed intermittently in the full suite but passed alone.
+- **Root cause:** the server responds before asynchronous capture finishes. The test waited for file existence, then edited ratings and killed the server; a header-only file satisfied that wait before the first interaction was appended.
+- **Resolution:** retain the existence check, then poll for one complete interaction before editing or restarting.
+- **Prevention rule:** wait for the authoritative durable content a test depends on, not an earlier artifact-creation event. Never make production submissions wait/retry just to satisfy a logging test.
 
 ### Keep a public live evaluation separate from confidential incidental reads (2026-09-14)
 
@@ -228,6 +258,20 @@ test("user can complete checkout with valid card", async ({ page }) => {
 - **Root cause:** one shared refresh coupled review progression to a separate confidential inspection surface.
 - **Resolution:** load candidates on explicit Help/private-learning inspection, not selection/start/answer/status refresh. Preserve extraction/review refreshes and keyboard focus; opening the overlay synchronously avoids losing the trigger while awaiting data. The synthetic browser regression first observed one forbidden incidental request, then zero after the fix; deliberate Help still loads once and existing learning actions pass.
 - **Prevention:** freeze preexisting metadata exclusions before a paid eval, restrict all content reads/mutations to journal-created eval IDs, keep live runners opt-in/out of CI, and never mock an incidental live response to conceal private access. Authorized metadata counts or server-side hashes are different from inspecting original bodies. Journal exact requests, source commits, failures and explicit retries; deduplicate usage by provider message ID and flag missing-ID costs as unknown. Thin public comment highlights and votes are heldout descriptive signals, not proof of business quality.
+
+### A diagnostic-only branch nobody tests will silently degrade to "unknown"
+
+- **Symptom:** PLAA's read-only Airtable readiness probe reported `email_column_present: n/a` where it should have reported `false`, and its documented negative control ("flip the probe to a nonexistent column, expect `UNKNOWN_FIELD_NAME`") could not have passed. The probe looked healthy on every green run — the bug lived only on the failure path.
+- **Root cause:** the error classifier was a regex built inside a template literal, and the escaping collapsed one level: the intended `\\*` ("zero or more backslashes", to match the `\"type\"` of a JSON-string-inside-a-JSON-string error envelope) emitted `\*` — a literal asterisk that never matches. Every vendor error fell through to a generic `HTTP_422`, so "missing column" and "missing scope" became indistinguishable from each other and from "unknown".
+- **Resolution:** unit-test the classifier by feeding it the **real** failure envelope the vendor/orchestrator produces (not a hand-simplified object) and asserting the specific classification and the booleans derived from it.
+- **Prevention:** a readiness/diagnostic tool's *failure* branch is its actual product — test it at least as hard as the success branch. Two concrete rules: (1) any regex that is generated as a string (template literal, code-node source, config) must be asserted against the emitted code, not the source you wrote; (2) treat a classifier that can return "unknown" as untested until a test proves each known class is reached. A green report from an instrument that cannot detect the failure is worse than no report.
+
+### Save the instrument's raw output, not your summary of it
+
+- **Symptom:** an evidence folder for a live readiness check contained a careful hand-written README and **no raw probe response**. Every claim in it was true, but an independent reviewer could not confirm any of them without re-running a probe that was outside their read-only scope — so the finding had to be logged as an accepted verification gap rather than a verification.
+- **Root cause:** the tool already had a `--json` mode; the run that produced the conclusion used the human-readable mode and the numbers were transcribed into prose.
+- **Resolution:** re-run with `--json`, save the sanitized response next to the write-up, and keep the prose as interpretation *of* that artifact.
+- **Prevention rule:** for any one-shot check against a system you do not control (live config read, third-party schema, deploy dry-run), persist the machine output. A report that cannot be re-derived from stored evidence is a claim, not a result — and the evidence has to be sanitized at the source (booleans, ids, business config) so that saving it is never a privacy decision made under time pressure.
 
 ## The One Rule
 

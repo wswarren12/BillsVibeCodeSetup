@@ -106,4 +106,14 @@ Personal vs professional is a tag (`#personal` / `#client`), not a second file.
 - **Mode:** Operate
 - **Steal:** colorful but not overwhelming with good photos 
 - **Tags:** #colorful #minimalist #landing-page #b2c
+### One Useful Thing (Substack) — https://www.oneusefulthing.org/archive
+- **Mode:** Read
+- **Steal:** narrow, ruled chronological entries with title, short deck, and date; subscription stays separate from the reading links
+- **Tags:** #newsletter #editorial #archive #light
+
+### OpenTools newsletter — https://newsletter.opentools.ai/archive
+- **Mode:** Read
+- **Steal:** dates and short issue descriptions make the archive scannable; an explicit Subscribe action remains separate from issue selection
+- **Tags:** #newsletter #archive #ai #metadata
+
 <!-- add yours here, newest first -->

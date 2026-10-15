@@ -98,6 +98,28 @@ This document catalogs recurring mistakes in MVP development. When the coding ag
 
 **The fix:** Ship the obvious implementation. Profile if users report slowness. Optimize the specific bottleneck, not the whole app. React's default rendering is fast enough for most MVPs.
 
+## `git checkout <path>` to "undo my edit" in a dirty shared checkout
+
+**What it looks like:** an agent (or a hurried human) reformats a tracked file,
+dislikes the diff, and runs `git checkout -- <path>` / `git restore <path>` to
+get back to "before".
+
+**Why it's wrong:** in a checkout that is *intentionally dirty* — e.g. carrying
+a previous session's uncommitted work — that command does not undo your edit, it
+restores the file to **HEAD**, silently deleting everybody else's uncommitted
+changes to it. There is no reflog for unstaged work; the only recovery is
+retyping it from memory or from whatever you happened to have read earlier.
+Hit for real on the PLAA bot (2026-09-26): a JSON seed file was reformatted by a
+python rewrite, `git checkout` "fixed" the formatting and took the prior run's
+synthetic Members table with it.
+
+**The fix:** never use checkout/restore/reset as an editing undo. Reverse your
+own change with a targeted edit, or copy the file aside first
+(`cp f f.bak`). When a script rewrites a structured file, make the script
+format-preserving (surgical text edit) instead of serialize-the-whole-document —
+the reformat is what created the urge to "undo" in the first place. And before
+any destructive git command in a dirty tree, ask whose changes are in that file.
+
 ## The Summary Heuristic
 
 When you're about to build something, ask: "Is this serving the core loop, or is it serving my anxiety about the future?" If it's the latter, skip it. The future will arrive with specific, concrete requirements that are easier to address than the vague ones you're imagining now.
